@@ -3562,7 +3562,6 @@ id,name,titles_count,headquarters,origin_country,homepage,tmdb_url
 6631,Paramount+ with Showtime,7,"New York City, New York",US,,https://www.themoviedb.org/network/6631
 6632,Canal BIS,37,Rio de Janeiro,BR,,https://www.themoviedb.org/network/6632
 6633,Tokyo Channel 12,40,Tokyo,JP,,https://www.themoviedb.org/network/6633
-6634,4,0,,,,https://www.themoviedb.org/network/6634
 6636,Soyuzmultfilm,0,,,,https://www.themoviedb.org/network/6636
 6637,Racing TV,1,London,GB,,https://www.themoviedb.org/network/6637
 6638,National Geographic,2,,HU,,https://www.themoviedb.org/network/6638
@@ -4563,7 +4562,6 @@ id,name,titles_count,headquarters,origin_country,homepage,tmdb_url
 8186,AAN TV,2,Privado ,PK,,https://www.themoviedb.org/network/8186
 8187,SRG SSR,3,,CH,,https://www.themoviedb.org/network/8187
 8188,Canela.TV,2,"New York City, New York",US,,https://www.themoviedb.org/network/8188
-8189,Tv4,0,,,,https://www.themoviedb.org/network/8189
 8191,CCTV（废弃）,0,,,,https://www.themoviedb.org/network/8191
 8192,TITV,1,,TW,,https://www.themoviedb.org/network/8192
 8193,Canção Nova,1,,BR,,https://www.themoviedb.org/network/8193
@@ -5415,7 +5413,6 @@ id,name,titles_count,headquarters,origin_country,homepage,tmdb_url
 9270,TV4 Hits,9,,SE,,https://www.themoviedb.org/network/9270
 9271,C More First,23,,SE,,https://www.themoviedb.org/network/9271
 9272,C More Series,5,,SE,,https://www.themoviedb.org/network/9272
-9273,TV4,0,,,,https://www.themoviedb.org/network/9273
 9274,Aerr Entertainments of India,1,Kerala,IN,,https://www.themoviedb.org/network/9274
 9275,Aerr Entertains,1,,,,https://www.themoviedb.org/network/9275
 9276,France Inter,3,"116, avenue du Président-Kennedy, Paris",FR,,https://www.themoviedb.org/network/9276
@@ -5594,5 +5591,8 @@ id,name,titles_count,headquarters,origin_country,homepage,tmdb_url
 9466,NHK,0,,,,https://www.themoviedb.org/network/9466
 9467,15min,1,,,,https://www.themoviedb.org/network/9467
 9468,Apple Podcasts,1,"Cupertino, California",,,https://www.themoviedb.org/network/9468
-9469,Astro X3,1,,MY,https://www.astro.com.my/product/tv?plan=astro-x3,https://www.themoviedb.org/network/9469
-9471,Flavour Network,5,"Toronto, Ontario",CA,https://www.flavournetwork.ca,https://www.themoviedb.org/network/9471
+9469,Astro X3,1,,MY,,https://www.themoviedb.org/network/9469
+9471,Flavour Network,5,"Toronto, Ontario",CA,,https://www.themoviedb.org/network/9471
+9472,FOUR,1,Auckland,NZ,,https://www.themoviedb.org/network/9472
+9473,3NOW,1,,NZ,https://www.threenow.co.nz,https://www.themoviedb.org/network/9473
+9474,The Edge TV,1,,,,https://www.themoviedb.org/network/9474
