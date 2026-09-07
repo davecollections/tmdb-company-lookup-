@@ -617,7 +617,7 @@ test("unsafe matching collection remains raw elsewhere evidence but is not an au
 	assert.equal(inspected.candidates.length, 0);
 });
 
-test("safe candidate retains the existing same-slot different-Sort conflict and blocks mutation", () => {
+test("safe candidate adds a missing supported sort while retaining the exact configured match", () => {
 	const controller = createController();
 	const collection = createDestination(controller, "Streaming Services");
 	const folder = createFolder(controller, collection.createdInternalId, "Netflix");
@@ -626,11 +626,11 @@ test("safe candidate retains the existing same-slot different-Sort conflict and 
 	const candidate = inspected.candidates[0];
 
 	assert.equal(candidate.matchingSourceCount, 1);
-	assert.equal(candidate.conflictCount, 1);
-	assert.equal(candidate.plan.outcomes[0].status, STREAMING_HIERARCHY_PLACEMENT_STATUSES.SORT_CONFLICT);
+	assert.equal(candidate.conflictCount, 0);
+	assert.equal(candidate.plan.counts.newSourceCount, 1);
 	const beforeRevision = controller.getState().revision;
-	assert.equal(applyStreamingHierarchyPlan(controller, candidate.plan).configurationConflict, true);
-	assert.equal(controller.getState().revision, beforeRevision);
+	assert.equal(applyStreamingHierarchyPlan(controller, candidate.plan).ok, true);
+	assert.equal(controller.getState().revision, beforeRevision + 1);
 });
 
 test("selected destination plan is stale-rejected if the collection becomes unsafe before Apply", () => {
@@ -858,7 +858,7 @@ test("mixed provider and opaque Streaming evidence fail closed", () => {
 	}
 });
 
-test("same provider-region-media slot with a different Sort blocks automatic Apply", () => {
+test("same provider-region-media slot permits a missing supported sort", () => {
 	const controller = createController();
 	const collection = createDestination(controller);
 	const folder = createFolder(controller, collection.createdInternalId, "Netflix");
@@ -866,11 +866,11 @@ test("same provider-region-media slot with a different Sort blocks automatic App
 	const result = createStreamingHierarchyPlan(controller.getState().project, existingScopeOptions(controller, collection.createdInternalId, { providers: [netflix], regions: [regions[0]], mediaChoice: "movies" }));
 
 	assert.equal(result.ok, true);
-	assert.equal(result.plan.conflicts[0].code, "STREAMING_HIERARCHY_SORT_CONFLICT");
-	assert.equal(result.plan.outcomes[0].status, STREAMING_HIERARCHY_PLACEMENT_STATUSES.SORT_CONFLICT);
+	assert.equal(result.plan.conflicts.length, 0);
+	assert.equal(result.plan.counts.newSourceCount, 1);
 	const beforeRevision = controller.getState().revision;
-	assert.equal(applyStreamingHierarchyPlan(controller, result.plan).configurationConflict, true);
-	assert.equal(controller.getState().revision, beforeRevision);
+	assert.equal(applyStreamingHierarchyPlan(controller, result.plan).ok, true);
+	assert.equal(controller.getState().revision, beforeRevision + 1);
 });
 
 test("exact matches elsewhere are informational and do not relocate or suppress destination creation", () => {

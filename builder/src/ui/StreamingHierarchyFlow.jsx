@@ -1,3 +1,6 @@
+import { SourcePreviewSelectors, SourcePreviewContent } from "./SourceTitlePreviewDialog.jsx";
+import { resolveSourcePreviewDraft, sourcePreviewVariantGroups, sourcePreviewVariantKey, sourcePreviewContext } from "../source-add/source-title-preview.js";
+import { sourceDraftSortId, sourceSortLabel } from "../source-add/source-sort-variants.js";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { isValidVisibleNuvioTitle, reversibleTitleFieldProps } from "../nuvio/titles.js";
 import {
@@ -84,15 +87,15 @@ function RegionRunValue({ regions }) {
 	return <details className="streaming-run-disclosure"><summary>{regions.length} regions selected</summary><ul>{regions.map((region) => <li key={region.code}>{regionLabel(region)}</li>)}</ul></details>;
 }
 
-export function StreamingRunSummary({ regions, mediaChoice, providers = null, sortOptionId = null, groupingMode = null, review = false }) {
-	const sort = STREAMING_SORT_OPTIONS.find((option) => option.id === sortOptionId);
+export function StreamingRunSummary({ regions, mediaChoice, providers = null, sortOptionIds = null, groupingMode = null, review = false }) {
+	const sort = sortOptionIds?.length ? { label: sortOptionIds.map(sourceSortLabel).join(", ") } : null;
 	const grouping = STREAMING_HIERARCHY_GROUPING_MODES.find((option) => option.id === groupingMode);
 	return (
 		<section className="decades-review-configuration streaming-run-summary" aria-label={review ? "Streaming configuration summary" : "Streaming run context"}>
 			<div><strong>Regions</strong><RegionRunValue regions={regions} /></div>
 			<div><strong>Media</strong><span>{mediaChoiceLabel(mediaChoice)}</span></div>
 			{providers ? <div><strong>Services</strong>{providers.length <= 5 ? <span>{providers.map((provider) => provider.name).join(", ")}</span> : <><span>{providers.length} services selected</span><SelectedProviders providers={providers} disclosureLabel="View selected services" /></>}</div> : null}
-			{sort ? <div><strong>Sort</strong><span>{sort.label}</span></div> : null}
+			{sort ? <div><strong>Selected</strong><span>{sort.label}</span></div> : null}
 			{grouping ? <div><strong>Grouping</strong><span>{grouping.label}</span></div> : null}
 		</section>
 	);
@@ -141,32 +144,36 @@ function ProviderSelectionStep({
 	);
 }
 
-function StreamingTitlePreview({ preview, regions, mediaTypes, onChangeRegion, onChangeMedia, onClose, onRetry }) {
+function StreamingTitlePreview({ preview, regions, mediaTypes, onChangeRegion, onChangeDraft, onClose, onRetry }) {
 	const dialogRef = useRef(null);
 	const closeRef = useRef(null);
 	const activeRegion = regions.find((region) => region.code === preview.regionCode) ?? regions[0];
 	const activeMedia = mediaLabel(preview.mediaType);
 	return (
-		<NestedPreviewDialog ariaLabelledBy="streaming-hierarchy-preview-title" backdropClassName="franchise-preview-backdrop studio-preview-backdrop streaming-hierarchy-preview-backdrop" backdropProps={{ "data-streaming-hierarchy-preview-backdrop": "true" }} dialogClassName="franchise-preview-modal studio-preview-modal streaming-hierarchy-preview-modal" dialogRef={dialogRef} initialFocusRef={closeRef} onClose={onClose}>
+		<NestedPreviewDialog ariaLabelledBy="streaming-hierarchy-preview-title" backdropClassName="franchise-preview-backdrop studio-preview-backdrop streaming-hierarchy-preview-backdrop" backdropProps={{ "data-streaming-hierarchy-preview-backdrop": "true" }} dialogClassName="franchise-preview-modal studio-preview-modal streaming-hierarchy-preview-modal source-sort-preview-modal" dialogRef={dialogRef} initialFocusRef={closeRef} onClose={onClose}>
 			<header><div><p className="panel-kicker">Title preview</p><h3 id="streaming-hierarchy-preview-title">{preview.provider.name}</h3></div><button ref={closeRef} type="button" onClick={onClose}>Close</button></header>
-			{regions.length > 1 ? <div className="studio-preview-tabs streaming-preview-region-tabs" role="tablist" aria-label="Preview region">{regions.map((region) => <button key={region.code} type="button" role="tab" aria-selected={region.code === preview.regionCode} onClick={() => onChangeRegion(region.code)}>{region.code}</button>)}</div> : <p className="studio-preview-single-media">{activeRegion.name} · {activeRegion.code}</p>}
-			{mediaTypes.length > 1 ? <div className="studio-preview-tabs streaming-preview-media-tabs" role="tablist" aria-label="Preview media">{mediaTypes.map((mediaType) => <button key={mediaType} type="button" role="tab" aria-selected={mediaType === preview.mediaType} onClick={() => onChangeMedia(mediaType)}>{mediaLabel(mediaType)}</button>)}</div> : <p className="studio-preview-single-media">{activeMedia}</p>}
-			{preview.status === "loading" ? <p className="studio-preview-state" role="status">Preparing {activeMedia.toLowerCase()} preview for {activeRegion.code}…</p> : null}
-			{preview.status === "error" ? <div className="studio-preview-state add-source-request-state" role="alert"><p>{preview.error?.message ?? "This Streaming preview could not be prepared."}</p><button type="button" onClick={onRetry}>Retry</button></div> : null}
-			{preview.status === "ready" ? <PosterOnlyPreviewGrid items={preview.data?.results ?? []} limit={10} className="franchise-preview-grid studio-preview-grid streaming-hierarchy-preview-grid" ariaLabel={`${preview.provider.name} ${activeMedia} ${activeRegion.code} poster preview`} altPrefix={activeMedia} /> : null}
+			<SourcePreviewContent>
+				{regions.length > 1 ? <div className="studio-preview-tabs streaming-preview-region-tabs" role="tablist" aria-label="Preview region">{regions.map((region) => <button key={region.code} type="button" role="tab" aria-selected={region.code === preview.regionCode} onClick={() => onChangeRegion(region.code)}>{region.code}</button>)}</div> : <p className="studio-preview-single-media">{activeRegion.name} · {activeRegion.code}</p>}
+				<SourcePreviewSelectors groups={sourcePreviewVariantGroups(preview.drafts.filter((draft) => draft.editable.filters.watchRegion === preview.regionCode), preview.draft, onChangeDraft)} />
+				<p className="studio-preview-single-media">{preview.provider.name} · {preview.regionCode} · {sourcePreviewContext(preview.draft)}</p>
+				{preview.status === "loading" ? <p className="studio-preview-state" role="status">Preparing {activeMedia.toLowerCase()} preview for {activeRegion.code}…</p> : null}
+				{preview.status === "error" ? <div className="studio-preview-state add-source-request-state" role="alert"><p>{preview.error?.message ?? "This Streaming preview could not be prepared."}</p><button type="button" onClick={onRetry}>Retry</button></div> : null}
+				{preview.status === "ready" ? <PosterOnlyPreviewGrid items={preview.data?.results ?? []} limit={10} className="franchise-preview-grid studio-preview-grid streaming-hierarchy-preview-grid" ariaLabel={`${preview.provider.name} ${activeMedia} ${activeRegion.code} poster preview`} altPrefix={activeMedia} /> : null}
+			</SourcePreviewContent>
 		</NestedPreviewDialog>
 	);
 }
 
-function ConfigureStep({ providers, regions, mediaChoice, sortOptionId, groupingMode, onSortChange, onGroupingChange, onPreview, onRemove, headingRef }) {
+function ConfigureStep({ providers, regions, mediaChoice, sortOptionIds, groupingMode, onSortChange, onGroupingChange, onPreview, onRemove, headingRef }) {
 	return (
 		<section className="studio-hierarchy-configure streaming-hierarchy-configure" aria-labelledby="streaming-hierarchy-configure-title">
 			<div className="add-source-section-heading"><div><p className="panel-kicker">Step 2</p><h3 id="streaming-hierarchy-configure-title" ref={headingRef} tabIndex={-1}>Configure Streaming services</h3></div></div>
 			<p className="studio-configure-helper">These choices apply to every selected service and region.</p>
 			<StreamingRunSummary regions={regions} mediaChoice={mediaChoice} />
-			<SemanticSortChoices options={STREAMING_SORT_OPTIONS} selectedId={sortOptionId} name="streaming-hierarchy-sort" legend="Sort" onChange={onSortChange} />
+			{sortOptionIds?.length === 0 ? <p id="streaming-hierarchy-sort-error" role="alert" className="editor-field-error">Choose at least one option.</p> : null}
+			<SemanticSortChoices options={STREAMING_SORT_OPTIONS} selectedIds={sortOptionIds} helper="Choose one or more options. Movies and Series get separate sources." name="streaming-hierarchy-sort" validationMessageId="streaming-hierarchy-sort-error" legend="Sources to create" onChange={onSortChange} />
 			{regions.length > 1 ? <SemanticSortChoices options={STREAMING_HIERARCHY_GROUPING_MODES} selectedId={groupingMode} name="streaming-hierarchy-grouping" legend="Folder grouping" onChange={onGroupingChange} /> : null}
-			<section className="studio-configure-selected streaming-configure-selected" aria-labelledby="streaming-configure-selected-title"><div className="add-source-section-heading"><div><h4 id="streaming-configure-selected-title">Selected services · {providers.length}</h4></div></div><div className="studio-configure-list streaming-configure-list">{providers.map((provider) => <article key={provider.id} className="studio-configure-row streaming-configure-row" data-streaming-provider={provider.id}><div className="studio-configure-row-main"><TmdbEntityLogo entity={provider} entityType="streaming-provider" context="result" /><div className="studio-configure-row-copy"><strong>{provider.name}</strong><span>{regions.map((region) => region.code).join(" · ")} · {mediaChoiceLabel(mediaChoice)}</span><small>TMDB {provider.id}</small></div><div className="studio-configure-row-actions"><button type="button" aria-haspopup="dialog" aria-label={`Preview titles for ${provider.name}`} onClick={(event) => onPreview(provider, event.currentTarget)}>Preview titles</button><button className="studio-configure-remove" type="button" aria-label={`Remove ${provider.name}`} onClick={() => onRemove(provider.id)}>×</button></div></div></article>)}</div></section>
+			<section className="studio-configure-selected streaming-configure-selected" aria-labelledby="streaming-configure-selected-title"><div className="add-source-section-heading"><div><h4 id="streaming-configure-selected-title">Selected services · {providers.length}</h4></div></div><div className="studio-configure-list streaming-configure-list">{providers.map((provider) => <article key={provider.id} className="studio-configure-row streaming-configure-row" data-streaming-provider={provider.id}><div className="studio-configure-row-main"><TmdbEntityLogo entity={provider} entityType="streaming-provider" context="result" /><div className="studio-configure-row-copy"><strong>{provider.name}</strong><span>{regions.map((region) => region.code).join(" · ")} · {mediaChoiceLabel(mediaChoice)}</span><small>TMDB {provider.id}</small></div><div className="studio-configure-row-actions"><button type="button" aria-haspopup="dialog" aria-label={`Preview titles for ${provider.name}`} disabled={sortOptionIds.length === 0} onClick={(event) => onPreview(provider, event.currentTarget)}>Preview titles</button><button className="studio-configure-remove" type="button" aria-label={`Remove ${provider.name}`} onClick={() => onRemove(provider.id)}>×</button></div></div></article>)}</div></section>
 		</section>
 	);
 }
@@ -328,7 +335,7 @@ function ReviewStep({ planResult, intentConfiguration, newCollectionElsewhereEvi
 	return (
 		<section className="studio-hierarchy-review studio-hierarchy-appearance streaming-hierarchy-review" aria-labelledby="streaming-hierarchy-review-title">
 			<div className="add-source-section-heading"><div><p className="panel-kicker">Step 3</p><h3 id="streaming-hierarchy-review-title" ref={headingRef} tabIndex={-1}>{choiceRequired ? "Choose destination" : <>Review &amp; Appearance</>}</h3></div></div>
-			{summaryConfiguration ? <StreamingRunSummary regions={summaryConfiguration.regions} mediaChoice={summaryConfiguration.mediaChoice} providers={summaryConfiguration.providers} sortOptionId={summaryConfiguration.sortOptionId} groupingMode={summaryConfiguration.regions.length > 1 ? summaryConfiguration.groupingMode : null} review /> : null}
+			{summaryConfiguration ? <StreamingRunSummary regions={summaryConfiguration.regions} mediaChoice={summaryConfiguration.mediaChoice} providers={summaryConfiguration.providers} sortOptionIds={summaryConfiguration.sortOptionIds} groupingMode={summaryConfiguration.regions.length > 1 ? summaryConfiguration.groupingMode : null} review /> : null}
 			{originalScope === "new-collection" ? <StreamingDestinationChooser candidates={destinationCandidates} selectedDestination={selectedDestination} elsewhereEvidence={newCollectionElsewhereEvidence} collectionDisplayContext={collectionDisplayContext} onChange={onDestinationChange} /> : null}
 			{choiceRequired ? <><NewCollectionElsewhereEvidence evidence={newCollectionElsewhereEvidence} choicePending collectionDisplayContext={collectionDisplayContext} />{diagnostic ? <div className="editor-diagnostics" role="alert"><p>{diagnostic.message}</p></div> : null}</> : !plan ? <div className="editor-diagnostics" role="alert"><p>{planResult?.errors?.[0]?.message ?? "The Streaming plan could not be prepared."}</p></div> : <>
 				<section className="streaming-change-summary" aria-labelledby="streaming-change-summary-title"><h4 id="streaming-change-summary-title">{existingScope ? "What will change" : "What will be created"}</h4><div className="decades-plan-totals streaming-plan-totals" data-plan-scope={activeScope} aria-label="Plan totals">{existingScope ? <><div><strong>{plan.counts.existingFolderAdditionCount}</strong><span>Existing folder{plan.counts.existingFolderAdditionCount === 1 ? "" : "s"} updated</span></div><div><strong>{plan.counts.newFolderCount}</strong><span>New folder{plan.counts.newFolderCount === 1 ? "" : "s"}</span></div><div><strong>{plan.counts.newSourceCount}</strong><span>Source{plan.counts.newSourceCount === 1 ? "" : "s"} to add</span></div></> : <><div><strong>1</strong><span>Collection</span></div><div><strong>{plan.counts.folderCount}</strong><span>Folder{plan.counts.folderCount === 1 ? "" : "s"}</span></div><div><strong>{plan.counts.sourceCount}</strong><span>Source{plan.counts.sourceCount === 1 ? "" : "s"}</span></div></>}</div></section>
@@ -364,7 +371,7 @@ export function StreamingHierarchyFlow({
 	const [regionBrowseMode, setRegionBrowseMode] = useState(STREAMING_REGION_BROWSE_MODES.COMMON);
 	const [providerQuery, setProviderQuery] = useState("");
 	const [providerBrowseMode, setProviderBrowseMode] = useState(STREAMING_PROVIDER_BROWSE_MODES.TOP);
-	const [options, setOptions] = useState(() => Object.freeze({ collectionTitle: "Streaming Services", hideCollectionTitle: false, viewMode: "TABBED_GRID", showAllTab: true, pinToTop: false, folderTitleVisibility: DEFAULT_STREAMING_HIERARCHY_FOLDER_TITLE_VISIBILITY, groupingMode: DEFAULT_STREAMING_HIERARCHY_GROUPING_MODE, mediaChoice: "both", sortOptionId: DEFAULT_STREAMING_SORT_OPTION_ID }));
+	const [options, setOptions] = useState(() => Object.freeze({ collectionTitle: "Streaming Services", hideCollectionTitle: false, viewMode: "TABBED_GRID", showAllTab: true, pinToTop: false, folderTitleVisibility: DEFAULT_STREAMING_HIERARCHY_FOLDER_TITLE_VISIBILITY, groupingMode: DEFAULT_STREAMING_HIERARCHY_GROUPING_MODE, mediaChoice: "both", sortOptionIds: [DEFAULT_STREAMING_SORT_OPTION_ID] }));
 	const [folderTitleDrafts, setFolderTitleDrafts] = useState({});
 	const [selectionReconciliationNotice, setSelectionReconciliationNotice] = useState(null);
 	const [selectedDestination, setSelectedDestination] = useState(null);
@@ -405,9 +412,9 @@ export function StreamingHierarchyFlow({
 		groupingMode: selectedRegions.length > 1 ? options.groupingMode : DEFAULT_STREAMING_HIERARCHY_GROUPING_MODE,
 		regions: selectedRegions,
 		mediaChoice: options.mediaChoice,
-		sortOptionId: options.sortOptionId,
+		sortOptionIds: options.sortOptionIds,
 		providers: chosen,
-	}), [chosen, options.folderTitleVisibility, options.groupingMode, options.mediaChoice, options.sortOptionId, projectRevision, selectedRegions, validFolderTitleOverrides]);
+	}), [chosen, options.folderTitleVisibility, options.groupingMode, options.mediaChoice, options.sortOptionIds, projectRevision, selectedRegions, validFolderTitleOverrides]);
 	const newCollectionPlanResult = useMemo(() => scope === "new-collection" && chosen.length && selectedRegions.length ? createStreamingHierarchyPlan(project, {
 		...hierarchyIntentOptions,
 		scope: "new-collection",
@@ -551,26 +558,26 @@ export function StreamingHierarchyFlow({
 		setDiagnostic(null);
 	}
 
-	async function requestPreview(provider, regionCode, mediaType, trigger = null) {
+	async function requestPreview(provider, regionCode, mediaType, trigger = null, sortOptionId = preview?.sortOptionId ?? options.sortOptionIds[0]) {
+		const configuredPlan = scope === "new-collection" ? newCollectionPlanResult : fixedExistingPlanResult;
+		const configuredFolders = configuredPlan?.ok ? scope === "new-collection" ? configuredPlan.plan.newFolders : configuredPlan.plan.outcomes : [];
+		const drafts = configuredFolders.filter((folder) => folder.provider.id === provider.id).flatMap((folder) => folder.sources.map((entry) => entry.draft));
+		const draft = resolveSourcePreviewDraft(drafts.filter((entry) => entry.editable.filters.watchRegion === regionCode), { mediaType, sortOptionId });
+		if (!draft || typeof previewProvider?.getStreamingPreview !== "function") return;
 		if (trigger) previewTriggerRef.current = trigger;
-		previewCoordinatorRef.current.cancel({ notify: false });
-		const built = buildStreamingSourceDrafts(provider, { regionCodes: [regionCode], mediaChoice: mediaChoiceForType(mediaType), sortOptionId: options.sortOptionId, nameContext: STREAMING_SOURCE_NAME_CONTEXTS.GROUPED_BY_SERVICE });
-		if (!built.ok || typeof previewProvider?.getStreamingPreview !== "function") {
-			setPreview({ provider, regionCode, mediaType, status: "error", data: null, error: { message: built.errors?.[0]?.message ?? "Streaming Preview is unavailable." } });
-			return;
-		}
-		const token = Symbol(`streaming-preview-${provider.id}-${regionCode}-${mediaType}-${options.sortOptionId}`);
+		const context = { provider, regionCode, mediaType: draft.editable.mediaType, sortOptionId: sourceDraftSortId(draft), draft, drafts };
+		const token = Symbol("streaming-preview");
 		previewTokenRef.current = token;
-		setPreview({ provider, regionCode, mediaType, status: "loading", data: null, error: null });
-		const sourceNode = Object.freeze({ ...built.drafts[0], nodeType: "source", internalId: "streaming-hierarchy-preview" });
-		const outcome = await previewCoordinatorRef.current.run(({ signal }) => previewProvider.getStreamingPreview(sourceNode, { signal }), { providerId: provider.id, regionCode, mediaType, sortOptionId: options.sortOptionId });
+		setPreview({ ...context, status: "loading", data: null, error: null });
+		const sourceNode = Object.freeze({ ...draft, nodeType: "source", internalId: "streaming-hierarchy-preview" });
+		const outcome = await previewCoordinatorRef.current.run(({ signal }) => previewProvider.getStreamingPreview(sourceNode, { signal }), sourcePreviewVariantKey(draft));
 		if (!outcome.accepted || previewTokenRef.current !== token) return;
-		if (outcome.result?.ok) setPreview({ provider, regionCode, mediaType, status: "ready", data: outcome.result.data, error: null });
-		else if (outcome.result?.error?.kind !== "aborted") setPreview({ provider, regionCode, mediaType, status: "error", data: null, error: outcome.result?.error ?? { message: "This Streaming preview could not be prepared." } });
+		if (outcome.result?.ok) setPreview({ ...context, status: "ready", data: outcome.result.data, error: null });
+		else if (outcome.result?.error?.kind !== "aborted") setPreview({ ...context, status: "error", data: null, error: outcome.result?.error ?? { message: "This Streaming preview could not be prepared." } });
 	}
 
 	function openPreview(provider, trigger) {
-		requestPreview(provider, selectedRegions[0].code, mediaTypesForChoice(options.mediaChoice)[0], trigger);
+		requestPreview(provider, selectedRegions[0].code, mediaTypesForChoice(options.mediaChoice)[0], trigger, options.sortOptionIds[0]);
 	}
 
 	function closePreview() {
@@ -627,7 +634,7 @@ export function StreamingHierarchyFlow({
 			return;
 		}
 		if (step === "configure") {
-			if (!chosen.length) return;
+			if (!chosen.length || !options.sortOptionIds.length) return;
 			scrollByStageRef.current.configure = scrollRef.current?.scrollTop ?? 0;
 			setStep("review");
 			return;
@@ -648,12 +655,12 @@ export function StreamingHierarchyFlow({
 
 	const destinationChoiceRequired = scope === "new-collection" && destinationCandidates.length > 0 && selectedDestination === null;
 	const routedExistingNoChanges = scope === "new-collection" && activeScope === "new-folder" && planResult?.ok && planResult.plan.conflicts.length === 0 && planResult.plan.counts.newSourceCount === 0;
-	const primaryDisabled = catalogueState.status !== "success" || (activeStage === "regions" ? selectedRegions.length === 0 : activeStage === "providers" ? chosen.length === 0 : activeStage === "configure" ? chosen.length === 0 : destinationChoiceRequired || !planResult?.ok || folderTitleErrors.size > 0 || planResult.plan.conflicts.length > 0 || (activeScope === "new-folder" && planResult.plan.counts.newSourceCount === 0 && !routedExistingNoChanges) || isApplying);
+	const primaryDisabled = catalogueState.status !== "success" || (activeStage === "regions" ? selectedRegions.length === 0 : activeStage === "providers" ? chosen.length === 0 : activeStage === "configure" ? chosen.length === 0 || options.sortOptionIds.length === 0 : destinationChoiceRequired || !planResult?.ok || folderTitleErrors.size > 0 || planResult.plan.conflicts.length > 0 || (activeScope === "new-folder" && planResult.plan.counts.newSourceCount === 0 && !routedExistingNoChanges) || isApplying);
 	const changesOnlyNewFolders = activeScope === "new-folder"
-		&& (planResult?.plan.counts.newFolderCount ?? 0) > 0
-		&& (planResult?.plan.counts.existingFolderAdditionCount ?? 0) === 0;
-	const primaryLabel = activeStage === "regions" ? `Choose services for ${selectedRegions.length} region${selectedRegions.length === 1 ? "" : "s"}` : activeStage === "providers" ? `Configure ${chosen.length} service${chosen.length === 1 ? "" : "s"}` : activeStage === "configure" ? "Continue to Review" : destinationChoiceRequired ? "Choose a destination" : routedExistingNoChanges ? "Close" : isApplying ? activeScope === "new-folder" ? "Applying…" : "Creating…" : activeScope === "new-collection" ? planResult?.plan.elsewhereEvidence?.overlap === "complete" ? "Create duplicate collection" : guidedCreateActionLabel(activeScope) : changesOnlyNewFolders ? guidedCreateActionLabel(activeScope) : "Apply changes";
-	const descriptions = { regions: "Choose one or more regions. Search stays inactive until you use it.", providers: "Choose eligible services in folder order.", configure: "Choose one shared Sort and folder grouping, then preview exact sources when useful.", review: destinationChoiceRequired ? "Choose where these Streaming sources should go." : "Review the exact creation or change summary before one atomic Apply." };
+		&& (planResult?.plan?.counts.newFolderCount ?? 0) > 0
+		&& (planResult?.plan?.counts.existingFolderAdditionCount ?? 0) === 0;
+	const primaryLabel = activeStage === "regions" ? `Choose services for ${selectedRegions.length} region${selectedRegions.length === 1 ? "" : "s"}` : activeStage === "providers" ? `Configure ${chosen.length} service${chosen.length === 1 ? "" : "s"}` : activeStage === "configure" ? "Continue to Review" : destinationChoiceRequired ? "Choose a destination" : routedExistingNoChanges ? "Close" : isApplying ? activeScope === "new-folder" ? "Applying…" : "Creating…" : activeScope === "new-collection" ? planResult?.plan?.elsewhereEvidence?.overlap === "complete" ? "Create duplicate collection" : guidedCreateActionLabel(activeScope) : changesOnlyNewFolders ? guidedCreateActionLabel(activeScope) : "Apply changes";
+	const descriptions = { regions: "Choose one or more regions. Search stays inactive until you use it.", providers: "Choose eligible services in folder order.", configure: "Choose sources and folder grouping, then preview the configured sources.", review: destinationChoiceRequired ? "Choose where these Streaming sources should go." : "Review the exact creation or change summary before one atomic Apply." };
 	const interactionOverlayOpen = Boolean(preview || duplicateConfirmation);
 
 	return <>
@@ -661,11 +668,11 @@ export function StreamingHierarchyFlow({
 		<form className="add-source-form studio-hierarchy-form streaming-hierarchy-form" data-streaming-hierarchy-stage={activeStage} onSubmit={submit} noValidate>
 			<div ref={scrollRef} className="add-source-scroll" inert={interactionOverlayOpen || undefined} aria-hidden={interactionOverlayOpen ? "true" : undefined}>
 				{selectionReconciliationNotice && (activeStage === "regions" || activeStage === "providers") ? <p className="people-selection-limit streaming-selection-reconciliation" data-streaming-selection-reconciliation="true" role="status">{selectionReconciliationNotice}</p> : null}
-				{catalogueState.status === "loading" || catalogueState.status === "idle" ? <p className="add-source-selection-status" role="status">Loading Streaming regions and providers…</p> : catalogueState.status === "error" ? <div className="add-source-request-state" role="alert"><p>{catalogueState.error?.message ?? "Streaming services could not be loaded. Try again."}</p><button type="button" onClick={() => setRetryGeneration((value) => value + 1)}>Retry</button></div> : activeStage === "regions" ? <div ref={regionHeadingRef} tabIndex={-1}><StreamingRegionStep heading="Choose regions" description="Select one or more regions. Services shown next must support the media you choose in every region." stageKicker="Step 1 · Select" browseMode={regionBrowseMode} query={regionQuery} queryRef={null} regions={regions} selectedRegions={selectedRegions} onBrowseModeChange={setRegionBrowseMode} onQueryChange={(event) => setRegionQuery(event.target.value)} onSelect={toggleRegion} /></div> : activeStage === "providers" ? <ProviderSelectionStep regions={selectedRegions} mediaChoice={options.mediaChoice} providers={providers} selection={selection} query={providerQuery} browseMode={effectiveProviderBrowseMode} onMediaChange={changeMedia} onQueryChange={(event) => setProviderQuery(event.target.value)} onBrowseModeChange={setProviderBrowseMode} onToggle={toggleProvider} onRemove={removeProvider} headingRef={providerHeadingRef} /> : activeStage === "configure" ? <ConfigureStep providers={chosen} regions={selectedRegions} mediaChoice={options.mediaChoice} sortOptionId={options.sortOptionId} groupingMode={selectedRegions.length > 1 ? options.groupingMode : DEFAULT_STREAMING_HIERARCHY_GROUPING_MODE} onSortChange={(sortOptionId) => updateOptions({ sortOptionId })} onGroupingChange={(groupingMode) => updateOptions({ groupingMode })} onPreview={openPreview} onRemove={removeProvider} headingRef={configureHeadingRef} /> : <ReviewStep planResult={planResult} intentConfiguration={intentConfiguration} newCollectionElsewhereEvidence={newCollectionElsewhereEvidence} destinationCandidates={destinationCandidates} selectedDestination={selectedDestination} onDestinationChange={changeDestination} options={options} originalScope={scope} activeScope={activeScope} destinationCollectionTitle={destinationCollectionTitle} collectionDisplayContext={collectionDisplayContext} folderTitleDrafts={folderTitleDrafts} folderTitleErrors={folderTitleErrors} onOptionsChange={updateOptions} onFolderTitleChange={updateFolderTitle} onUseDefaultFolderTitle={useDefaultFolderTitle} diagnostic={diagnostic} headingRef={reviewHeadingRef} />}
+				{catalogueState.status === "loading" || catalogueState.status === "idle" ? <p className="add-source-selection-status" role="status">Loading Streaming regions and providers…</p> : catalogueState.status === "error" ? <div className="add-source-request-state" role="alert"><p>{catalogueState.error?.message ?? "Streaming services could not be loaded. Try again."}</p><button type="button" onClick={() => setRetryGeneration((value) => value + 1)}>Retry</button></div> : activeStage === "regions" ? <div ref={regionHeadingRef} tabIndex={-1}><StreamingRegionStep heading="Choose regions" description="Select one or more regions. Services shown next must support the media you choose in every region." stageKicker="Step 1 · Select" browseMode={regionBrowseMode} query={regionQuery} queryRef={null} regions={regions} selectedRegions={selectedRegions} onBrowseModeChange={setRegionBrowseMode} onQueryChange={(event) => setRegionQuery(event.target.value)} onSelect={toggleRegion} /></div> : activeStage === "providers" ? <ProviderSelectionStep regions={selectedRegions} mediaChoice={options.mediaChoice} providers={providers} selection={selection} query={providerQuery} browseMode={effectiveProviderBrowseMode} onMediaChange={changeMedia} onQueryChange={(event) => setProviderQuery(event.target.value)} onBrowseModeChange={setProviderBrowseMode} onToggle={toggleProvider} onRemove={removeProvider} headingRef={providerHeadingRef} /> : activeStage === "configure" ? <ConfigureStep providers={chosen} regions={selectedRegions} mediaChoice={options.mediaChoice} sortOptionIds={options.sortOptionIds} groupingMode={selectedRegions.length > 1 ? options.groupingMode : DEFAULT_STREAMING_HIERARCHY_GROUPING_MODE} onSortChange={(sortOptionIds) => updateOptions({ sortOptionIds })} onGroupingChange={(groupingMode) => updateOptions({ groupingMode })} onPreview={openPreview} onRemove={removeProvider} headingRef={configureHeadingRef} /> : <ReviewStep planResult={planResult} intentConfiguration={intentConfiguration} newCollectionElsewhereEvidence={newCollectionElsewhereEvidence} destinationCandidates={destinationCandidates} selectedDestination={selectedDestination} onDestinationChange={changeDestination} options={options} originalScope={scope} activeScope={activeScope} destinationCollectionTitle={destinationCollectionTitle} collectionDisplayContext={collectionDisplayContext} folderTitleDrafts={folderTitleDrafts} folderTitleErrors={folderTitleErrors} onOptionsChange={updateOptions} onFolderTitleChange={updateFolderTitle} onUseDefaultFolderTitle={useDefaultFolderTitle} diagnostic={diagnostic} headingRef={reviewHeadingRef} />}
 			</div>
 			<footer className="add-source-actions" inert={interactionOverlayOpen || undefined} aria-hidden={interactionOverlayOpen ? "true" : undefined}><button ref={primaryActionRef} className="editor-apply" type="submit" disabled={primaryDisabled}>{primaryLabel}</button></footer>
 		</form>
-		{preview ? <StreamingTitlePreview preview={preview} regions={selectedRegions} mediaTypes={mediaTypesForChoice(options.mediaChoice)} onChangeRegion={(regionCode) => { if (regionCode !== preview.regionCode) requestPreview(preview.provider, regionCode, preview.mediaType); }} onChangeMedia={(mediaType) => { if (mediaType !== preview.mediaType) requestPreview(preview.provider, preview.regionCode, mediaType); }} onClose={closePreview} onRetry={() => requestPreview(preview.provider, preview.regionCode, preview.mediaType)} /> : null}
+		{preview ? <StreamingTitlePreview preview={preview} regions={selectedRegions} mediaTypes={mediaTypesForChoice(options.mediaChoice)} onChangeRegion={(regionCode) => { if (regionCode !== preview.regionCode) requestPreview(preview.provider, regionCode, preview.mediaType); }} onChangeDraft={(draft) => { if (draft !== preview.draft) requestPreview(preview.provider, preview.regionCode, draft.editable.mediaType, null, sourceDraftSortId(draft)); }} onClose={closePreview} onRetry={() => requestPreview(preview.provider, preview.regionCode, preview.mediaType)} /> : null}
 		{duplicateConfirmation ? <StreamingDuplicateCollectionConfirmation isApplying={isApplying} onCancel={closeDuplicateConfirmation} onContinue={() => applyReviewedPlan(duplicateConfirmation.plan)} /> : null}
 	</>;
 }

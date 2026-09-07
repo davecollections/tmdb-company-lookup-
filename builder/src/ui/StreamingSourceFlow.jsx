@@ -39,6 +39,9 @@ import { SemanticSortChoices } from "./SemanticSortChoices.jsx";
 import { SourceElsewhereNotice } from "./SourceElsewhereNotice.jsx";
 import { TmdbEntityLogo } from "./TmdbEntityLogo.jsx";
 import { SourceTitlePreviewDialog } from "./SourceTitlePreviewDialog.jsx";
+import { resolveSourcePreviewDraft, sourcePreviewVariantGroups, sourcePreviewVariantKey, sourcePreviewContext } from "../source-add/source-title-preview.js";
+import { sourceDraftSortId, sourceSortLabel } from "../source-add/source-sort-variants.js";
+import { reconcileStreamingSortTitleDrafts } from "../source-add/streaming-source.js";
 
 export const STREAMING_SOURCE_STEPS = Object.freeze({
 	PROVIDER: "provider",
@@ -275,7 +278,7 @@ export function StreamingConfigureStep({
 	provider,
 	regions,
 	mediaChoice,
-	sortOptionId,
+	sortOptionIds,
 	drafts,
 	duplicateReview,
 	applyDiagnostic,
@@ -326,21 +329,22 @@ export function StreamingConfigureStep({
 					})}
 				</div>
 			</fieldset>
-			<SemanticSortChoices options={STREAMING_SORT_OPTIONS} selectedId={sortOptionId} name="streaming-configure-sort" onChange={onSortChange} />
+			{sortOptionIds?.length === 0 ? <p id="streaming-configure-sort-error" role="alert" className="editor-field-error">Choose at least one option.</p> : null}
+			<SemanticSortChoices options={STREAMING_SORT_OPTIONS} selectedIds={sortOptionIds} helper="Choose one or more options. Movies and Series get separate sources." name="streaming-configure-sort" validationMessageId="streaming-configure-sort-error" legend="Sources to create" onChange={onSortChange} />
 			{summary.length ? (
 				<section className="streaming-generated-summary" aria-labelledby="streaming-generated-summary-title">
 					<div><div><p className="panel-kicker">Generated sources</p><h4 id="streaming-generated-summary-title">{summary.length} source{summary.length === 1 ? "" : "s"} configured</h4></div><span>{missingCount} to add</span></div>
 					<ul>
 						{summary.map((entry) => {
-							const candidateKey = streamingSourceCandidateKey(entry.regionCode, entry.mediaType);
+							const candidateKey = streamingSourceCandidateKey(entry.regionCode, entry.mediaType, entry.sortOptionId);
 							const customTitle = Object.hasOwn(sourceTitles, candidateKey) ? sourceTitles[candidateKey] : entry.title;
 							const editing = expandedCandidateKey === candidateKey;
 							const error = titleErrors.get(candidateKey) ?? null;
-							const inputId = `streaming-source-name-${entry.regionCode}-${entry.mediaType.toLowerCase()}`;
+							const inputId = `streaming-source-name-${entry.regionCode}-${entry.mediaType.toLowerCase()}-${entry.sortOptionId}`;
 							return (
 								<li key={entry.identity ?? candidateKey} data-streaming-candidate-existing={entry.existsInDestination ? "true" : "false"} data-streaming-candidate-editing={editing ? "true" : "false"}>
 									<div className="streaming-generated-source-row">
-										<span><strong>{entry.regionCode} · {generatedMediaLabel(entry.mediaType)}</strong><small>{customTitle}</small></span>
+										<span><strong>{entry.regionCode} · {sourceSortLabel(entry.sortOptionId)} {generatedMediaLabel(entry.mediaType)}</strong><small>{customTitle}</small></span>
 										<div className="streaming-generated-source-actions">
 											<em>{entry.existsInDestination ? "Already exists" : "To add"}</em>
 											<button type="button" onClick={() => onEditName(candidateKey)}>{editing ? "Done" : "Edit name"}</button>
@@ -394,7 +398,8 @@ export function StreamingSourceFlow({ catalogueProvider, previewProvider, projec
 	const [selectedProvider, setSelectedProvider] = useState(null);
 	const [selectedRegions, setSelectedRegions] = useState([]);
 	const [mediaChoice, setMediaChoice] = useState(null);
-	const [sortOptionId, setSortOptionId] = useState(DEFAULT_STREAMING_SORT_OPTION_ID);
+	const [sortOptionIds, setSortOptionIds] = useState([DEFAULT_STREAMING_SORT_OPTION_ID]);
+	const soleSortBeforeEmptyRef = useRef(null);
 	const [sourceTitleDrafts, setSourceTitleDrafts] = useState({});
 	const [expandedCandidateKey, setExpandedCandidateKey] = useState(null);
 	const [applyDiagnostic, setApplyDiagnostic] = useState(null);
@@ -433,10 +438,10 @@ export function StreamingSourceFlow({ catalogueProvider, previewProvider, projec
 	}, [catalogue, effectiveProviderBrowseMode, providerQuery, selectedRegions]);
 	const regions = useMemo(() => browseStreamingRegions(catalogue?.regions ?? [], { mode: regionBrowseMode, query: regionQuery }), [catalogue, regionBrowseMode, regionQuery]);
 	const baseDraftResult = selectedProvider && regionCodes.length && mediaChoice
-		? buildStreamingSourceDrafts(selectedProvider, { regionCodes, mediaChoice, sortOptionId })
+		? buildStreamingSourceDrafts(selectedProvider, { regionCodes, mediaChoice, sortOptionIds })
 		: { ok: false, drafts: [], errors: [] };
 	const draftResult = selectedProvider && regionCodes.length && mediaChoice
-		? buildStreamingSourceDrafts(selectedProvider, { regionCodes, mediaChoice, sortOptionId, sourceTitles })
+		? buildStreamingSourceDrafts(selectedProvider, { regionCodes, mediaChoice, sortOptionIds, sourceTitles })
 		: { ok: false, drafts: [], errors: [] };
 	const duplicateReview = baseDraftResult.ok
 		? inspectStreamingSourceDuplicates(project, folder?.internalId ?? null, baseDraftResult.drafts)
@@ -493,7 +498,6 @@ export function StreamingSourceFlow({ catalogueProvider, previewProvider, projec
 		setProviderQuery("");
 		setProviderBrowseMode(selectedRegions.length === 1 ? STREAMING_PROVIDER_BROWSE_MODES.TOP : STREAMING_PROVIDER_BROWSE_MODES.ALL);
 		setMediaChoice(null);
-		setSortOptionId(DEFAULT_STREAMING_SORT_OPTION_ID);
 		setExpandedCandidateKey(null);
 		setApplyDiagnostic(null);
 		setNavigation((current) => enterStreamingProviderStep(current, selectedRegions.map((region) => region.code), scrollRef.current?.scrollTop ?? 0));
@@ -505,7 +509,6 @@ export function StreamingSourceFlow({ catalogueProvider, previewProvider, projec
 		if (selectedProvider?.id !== provider.id) setExpandedCandidateKey(null);
 		setSelectedProvider(provider);
 		setMediaChoice(defaultChoice);
-		setSortOptionId(DEFAULT_STREAMING_SORT_OPTION_ID);
 		setApplyDiagnostic(null);
 		setNavigation((current) => enterStreamingConfigureStep(current, provider.id, scrollRef.current?.scrollTop ?? 0));
 		queueMicrotask(() => focusElementWithoutScroll(configureRef.current));
@@ -552,7 +555,7 @@ export function StreamingSourceFlow({ catalogueProvider, previewProvider, projec
 				regions: selectedRegions,
 				catalogueRegions: catalogue.regions,
 				mediaChoice,
-				sortOptionId,
+				sortOptionIds,
 				drafts: draftResult.drafts,
 				duplicateOverrideIdentity: addAll ? streamingDuplicateOverrideIdentity(folder.internalId, draftResult.drafts) : null,
 			});
@@ -576,7 +579,7 @@ export function StreamingSourceFlow({ catalogueProvider, previewProvider, projec
 
 	async function loadPreview(candidate) {
 		setPreview({ status: "loading", candidate, data: null, error: null });
-		const key = streamingSourceCandidateKey(candidate.sourceDraft.editable.filters.watchRegion, candidate.request.mediaType);
+		const key = sourcePreviewVariantKey(candidate.sourceDraft);
 		const outcome = await previewCoordinatorRef.current.run(
 			({ signal }) => requestSourceTitlePreview(candidate.request, { streaming: previewProvider }, signal),
 			key,
@@ -607,7 +610,7 @@ export function StreamingSourceFlow({ catalogueProvider, previewProvider, projec
 	const descriptions = {
 		[STREAMING_SOURCE_STEPS.REGION]: "Choose one or more regions, then continue to providers.",
 		[STREAMING_SOURCE_STEPS.PROVIDER]: "Choose one provider with common availability across your selected regions.",
-		[STREAMING_SOURCE_STEPS.CONFIGURE]: "Choose common media and sort options, review generated sources, then add.",
+		[STREAMING_SOURCE_STEPS.CONFIGURE]: "Choose common media and sources, review generated sources, then add.",
 	};
 	const previewRequest = draftResult.ok && draftResult.drafts.length > 0 ? sourceTitlePreviewRequest("streaming", draftResult.drafts[0]) : null;
 	const previewAvailable = sourceTitlePreviewProviderAvailable(previewRequest, { streaming: previewProvider });
@@ -623,20 +626,10 @@ export function StreamingSourceFlow({ catalogueProvider, previewProvider, projec
 				id: regionCode,
 				label: selectedRegions.find((region) => region.code === regionCode)?.name ?? regionCode,
 				selected: activePreviewRegion === regionCode,
-				onSelect: () => loadPreview(streamingPreviewCandidate(draftResult.drafts.find((draft) => draft.editable.filters.watchRegion === regionCode))),
+				onSelect: () => loadPreview(streamingPreviewCandidate(resolveSourcePreviewDraft(draftResult.drafts.filter((draft) => draft.editable.filters.watchRegion === regionCode), { mediaType: preview.candidate.request.mediaType, sortOptionId: sourceDraftSortId(preview.candidate.sourceDraft) }))),
 			})),
 		}] : []),
-		...(activeRegionDrafts.length > 1 ? [{
-			id: "media",
-			label: "Media",
-			ariaLabel: "Preview media",
-			options: activeRegionDrafts.map((draft) => ({
-				id: draft.editable.mediaType,
-				label: draft.editable.mediaType === "TV" ? "Series" : "Movies",
-				selected: preview.candidate.request.mediaType === draft.editable.mediaType,
-				onSelect: () => loadPreview(streamingPreviewCandidate(draft)),
-			})),
-		}] : []),
+		...sourcePreviewVariantGroups(activeRegionDrafts, preview.candidate.sourceDraft, (draft) => loadPreview(streamingPreviewCandidate(draft))),
 	] : [];
 	const content = (
 		<div className="add-source-portal" data-add-source-portal="true" data-mobile-surface="opaque">
@@ -664,25 +657,31 @@ export function StreamingSourceFlow({ catalogueProvider, previewProvider, projec
 								<StreamingProviderStep browseMode={effectiveProviderBrowseMode} query={providerQuery} queryRef={providerQueryRef} providers={providers} selectedRegions={selectedRegions} onBrowseModeChange={setProviderBrowseMode} onQueryChange={(event) => setProviderQuery(event.target.value)} onSelect={selectProvider} />
 							) : (
 								<div ref={configureRef} className="studio-configure-focus-target" tabIndex={-1}>
-									<StreamingConfigureStep provider={selectedProvider} regions={selectedRegions} mediaChoice={mediaChoice} sortOptionId={sortOptionId} drafts={baseDraftResult.drafts} duplicateReview={duplicateReview} applyDiagnostic={applyDiagnostic} expandedCandidateKey={expandedCandidateKey} sourceTitles={sourceTitles} titleErrors={titleErrors} onMediaChange={(choiceId) => {
-										const next = buildStreamingSourceDrafts(selectedProvider, { regionCodes, mediaChoice: choiceId, sortOptionId });
+									<StreamingConfigureStep provider={selectedProvider} regions={selectedRegions} mediaChoice={mediaChoice} sortOptionIds={sortOptionIds} drafts={baseDraftResult.drafts} duplicateReview={duplicateReview} applyDiagnostic={applyDiagnostic} expandedCandidateKey={expandedCandidateKey} sourceTitles={sourceTitles} titleErrors={titleErrors} onMediaChange={(choiceId) => {
+										const next = buildStreamingSourceDrafts(selectedProvider, { regionCodes, mediaChoice: choiceId, sortOptionIds });
 										setMediaChoice(choiceId);
-										if (expandedCandidateKey && !next.drafts.some((draft) => streamingSourceCandidateKey(draft.editable.filters.watchRegion, draft.editable.mediaType) === expandedCandidateKey)) setExpandedCandidateKey(null);
+										if (expandedCandidateKey && !next.drafts.some((draft) => streamingSourceCandidateKey(draft.editable.filters.watchRegion, draft.editable.mediaType, sourceDraftSortId(draft)) === expandedCandidateKey)) setExpandedCandidateKey(null);
 										setApplyDiagnostic(null);
-									}} onSortChange={(optionId) => { setSortOptionId(optionId); setApplyDiagnostic(null); }} onEditName={(candidateKey) => {
+									}} onSortChange={(nextIds) => {
+										const previousIds = sortOptionIds.length ? sortOptionIds : soleSortBeforeEmptyRef.current ?? [];
+										setSourceTitleDrafts((current) => reconcileStreamingSortTitleDrafts(current, selectedProvider.id, previousIds, nextIds));
+										soleSortBeforeEmptyRef.current = nextIds.length === 0 && sortOptionIds.length === 1 ? sortOptionIds : null;
+										setSortOptionIds(nextIds);
+										setApplyDiagnostic(null);
+									}} onEditName={(candidateKey) => {
 										setExpandedCandidateKey((current) => current === candidateKey ? null : candidateKey);
 										queueMicrotask(() => focusElementWithoutScroll(titleInputRefs.current.get(candidateKey)));
 									}} onTitleChange={(candidateKey, title) => {
-										const [regionCode, mediaType] = candidateKey.split("|");
-										const draftKey = streamingSourceTitleDraftKey(selectedProvider?.id, regionCode, mediaType);
+										const [regionCode, mediaType, sortId] = candidateKey.split("|");
+										const draftKey = streamingSourceTitleDraftKey(selectedProvider?.id, regionCode, mediaType, sortId);
 										if (draftKey !== null) setSourceTitleDrafts((current) => ({ ...current, [draftKey]: title }));
 										setApplyDiagnostic(null);
 									}} onTitleInputMount={(candidateKey, element) => {
 										if (element) titleInputRefs.current.set(candidateKey, element);
 										else titleInputRefs.current.delete(candidateKey);
 									}} onUseDefaultName={(candidateKey) => {
-										const [regionCode, mediaType] = candidateKey.split("|");
-										const draftKey = streamingSourceTitleDraftKey(selectedProvider?.id, regionCode, mediaType);
+										const [regionCode, mediaType, sortId] = candidateKey.split("|");
+										const draftKey = streamingSourceTitleDraftKey(selectedProvider?.id, regionCode, mediaType, sortId);
 										if (draftKey !== null) setSourceTitleDrafts((current) => {
 											const next = { ...current };
 											delete next[draftKey];
@@ -699,7 +698,7 @@ export function StreamingSourceFlow({ catalogueProvider, previewProvider, projec
 					</form>
 				</section>
 			</div>
-			{preview ? <SourceTitlePreviewDialog preview={preview} titleId="streaming-add-preview-title" backdropProps={{ "data-streaming-add-preview-backdrop": "true" }} dialogProps={{ "data-streaming-add-preview": "true" }} selectorGroups={previewSelectorGroups} onClose={closePreview} onRetry={() => loadPreview(preview.candidate)} /> : null}
+			{preview ? <SourceTitlePreviewDialog preview={preview} titleId="streaming-add-preview-title" backdropProps={{ "data-streaming-add-preview-backdrop": "true" }} dialogProps={{ "data-streaming-add-preview": "true" }} context={`${selectedProvider.name} · ${activePreviewRegion} · ${sourcePreviewContext(preview.candidate.sourceDraft)}`} selectorGroups={previewSelectorGroups} onClose={closePreview} onRetry={() => loadPreview(preview.candidate)} /> : null}
 		</div>
 	);
 	return typeof document === "undefined" ? content : createPortal(content, document.body);

@@ -149,7 +149,7 @@ test("Decade selection is multi-select, catalogue ordered, and the visible flow 
 	assert.equal(state.decadeOrder, "newest-first");
 	assert.equal(state.yearOrder, "oldest-first");
 	assert.equal(selectedDecadesDisplayOrderId(state), DEFAULT_DECADES_DISPLAY_ORDER_ID);
-	assert.equal(state.sortOptionId, "popular");
+	assert.deepEqual(state.sortOptionIds, ["popular"]);
 	assert.equal(state.viewMode, "TABBED_GRID");
 	assert.equal(state.currentYearMode, "full-decade");
 	assert.equal(state.showAllTab, true);
@@ -668,8 +668,8 @@ test("structure, ordering, and shared presentation choices render schematic prev
 	state = { ...state, layout: "mixed-collection", content: { wholeDecade: true, individualYears: true, genreBreakdown: false } };
 	const markup = renderToStaticMarkup(createElement(DecadesOptionsStep, { state, onStateChange() {} }));
 	const contentChoicesMarkup = markup.slice(markup.indexOf('<div class="decades-content-grid">'), markup.indexOf("</fieldset>", markup.indexOf('<div class="decades-content-grid">')));
-	assert.equal((markup.match(/type="checkbox"/g) ?? []).length, 3);
-	assert.equal((markup.match(/type="checkbox" checked=""/g) ?? []).length, 2);
+	assert.equal((contentChoicesMarkup.match(/type="checkbox"/g) ?? []).length, 3);
+	assert.equal((contentChoicesMarkup.match(/type="checkbox" checked=""/g) ?? []).length, 2);
 	assert.doesNotMatch(contentChoicesMarkup, /choice-card-input|visually-hidden|data-selected|selection-indicator|selection-state|✓/);
 	for (const marker of ['data-structure-preview="separate"', 'data-structure-preview="mixed"', "Movie Decades", "TV Decades", "Decade &amp; Year order", "Choose how Decade folders are ordered on Home and how Year sources are ordered inside each folder.", "Display order", "Source grouping", "Decade folders", "Year sources"]) assert.ok(markup.includes(marker), marker);
 	for (const label of ["Newest Decades, Oldest Years", "Newest First", "Oldest First"]) assert.ok(markup.includes(`>${label}<`), label);
@@ -712,13 +712,13 @@ test("Step 2 owns content configuration while Step 3 owns names, presentation, a
 	collectionState = updateDecadesCreationMedia(collectionState, "both");
 	collectionState = { ...collectionState, step: DECADES_CREATION_STEPS.OPTIONS };
 	const options = renderToStaticMarkup(createElement(DecadesOptionsStep, { state: collectionState, onStateChange() {} }));
-	for (const text of ["Configure Decades", "Media", "Sort titles by", "Collection structure", "Decade overview", "Individual years", "Genre breakdown", "Decade &amp; Year order", "Display order", "Advanced options"]) assert.ok(options.includes(text), text);
+	for (const text of ["Configure Decades", "Media", "Sources to create", "Collection structure", "Decade overview", "Individual years", "Genre breakdown", "Decade &amp; Year order", "Display order", "Advanced options"]) assert.ok(options.includes(text), text);
 	assert.ok(options.includes("Add one source covering the complete Decade, such as All 2000s."));
 	assert.ok(options.includes("Add Genre sources to all selected Decades, or customise each Decade."));
 	assert.equal(options.includes("Future-year sources may remain empty"), false);
 	assert.equal(options.includes("popular Genre"), false);
 	assert.equal((options.match(/class="studio-sort-choices semantic-sort-choices"/g) ?? []).length, 2);
-	for (const label of ["Movies", "Series", "Both", "Popular", "Recent", "Top Rated", "Most Votes"]) assert.ok(options.includes(`>${label}<`), label);
+	for (const label of ["Movies", "Series", "Both", "Popular", "Recent", "Top rated", "Most voted"]) assert.ok(options.includes(`>${label}<`), label);
 	assert.match(options, /type="checkbox" disabled="" checked=""/);
 	for (const obsolete of ["All years combined", "Whole decade", "Through current year", "Current year only", "Full decade", "Collection appearance", "Decade folder appearance", "Collection options", "Decade folder options", "Source sorting and filters"]) assert.equal(options.includes(obsolete), false, obsolete);
 	assert.ok(options.indexOf('name="decades-media"') < options.indexOf('name="decades-sort"'));
@@ -727,7 +727,7 @@ test("Step 2 owns content configuration while Step 3 owns names, presentation, a
 	assert.match(options, /<details class="genre-advanced-options decades-advanced-options" data-decades-advanced="true">/);
 	assert.equal(options.includes('data-decades-advanced="true" open'), false);
 	const advancedMarkup = options.match(/<details class="genre-advanced-options decades-advanced-options"[\s\S]*?<\/details>/)?.[0] ?? "";
-	assert.equal(advancedMarkup.includes("Sort titles by"), false);
+	assert.equal(advancedMarkup.includes("Sources to create"), false);
 
 	collectionState = prepareDecadesReview(collectionState);
 	const planResult = buildDecadesCreationPlan(current.getState().project, current.getState().revision, collectionState);
@@ -940,7 +940,7 @@ test("Decade source edit rejects structural drift and renders fixed fields with 
 		onCancel() {},
 		onSave() { return { ok: true }; },
 	}));
-	for (const text of ["Fixed structure", "1980s", "Movies", "Comedy", "Popular", "Recent", "Top Rated", "Most Votes", "Decade dates stay fixed"]) assert.ok(markup.includes(text), text);
+	for (const text of ["Fixed structure", "1980s", "Movies", "Comedy", "Popular", "Recent", "Top rated", "Most voted", "Decade dates stay fixed"]) assert.ok(markup.includes(text), text);
 	assert.equal(markup.includes("From year"), false);
 	assert.equal(markup.includes("To year"), false);
 });

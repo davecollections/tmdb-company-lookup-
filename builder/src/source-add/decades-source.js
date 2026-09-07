@@ -1,3 +1,4 @@
+import { orderedSourceSortIds, sourceSortLabel, sourceSortSelectionError } from "./source-sort-variants.js";
 import {
 	buildDiscoverSourceDraft,
 	DEFAULT_DISCOVER_SORT_OPTION_ID,
@@ -26,7 +27,7 @@ export const DECADES_MEDIA_MODES = Object.freeze([
 
 export const DECADES_SORT_OPTIONS = Object.freeze(DISCOVER_SORT_OPTIONS.map((option) => Object.freeze({
 	id: option.id,
-	label: option.label === "Top rated" ? "Top Rated" : option.label === "Most voted" ? "Most Votes" : option.label,
+	label: option.label,
 })));
 
 export const DEFAULT_DECADES_SORT_OPTION_ID = DEFAULT_DISCOVER_SORT_OPTION_ID;
@@ -77,6 +78,7 @@ const CONFIGURATION_KEYS = new Set([
 	"currentYear",
 	"currentYearMode",
 	"sortOptionId",
+	"sortOptionIds",
 	"genreNames",
 	"genreNamesByDecade",
 	"decadeOrder",
@@ -391,8 +393,9 @@ export function normalizeDecadesSourceConfiguration(value) {
 	}
 
 	const sortOptionId = value.sortOptionId ?? DEFAULT_DECADES_SORT_OPTION_ID;
-	if (!DECADES_SORT_OPTIONS.some((option) => option.id === sortOptionId)) {
-		errors.push(diagnostic("INVALID_DECADES_SORT", "$decades.sortOptionId", "Choose a supported Decades sort order."));
+	const sorts = orderedSourceSortIds(value.sortOptionIds, sortOptionId);
+	if (sorts === null) {
+		errors.push(diagnostic("INVALID_DECADES_SORT", "$decades.sortOptionId", sourceSortSelectionError(value.sortOptionIds, "Choose a supported Decades sort order.")));
 	}
 	const genres = normalizedGenreConfiguration(value, orderedSelectedIds, content, media, errors);
 	const advanced = normalizeAdvanced(value.advanced, genres.union, genres.byDecade, orderedSelectedIds, errors);
@@ -436,6 +439,7 @@ export function normalizeDecadesSourceConfiguration(value) {
 			currentYear: value.currentYear,
 			currentYearMode,
 			sortOptionId,
+			...(value.sortOptionIds === undefined ? {} : { sortOptionIds: sorts }),
 			genreNamesByDecade: genres.byDecade,
 			decadeOrder,
 			yearOrder,
@@ -603,6 +607,17 @@ export function buildCanonicalDecadePeriodDrafts({
 	});
 }
 
+function buildDecadePeriodSortVariants(options, sorts) {
+	const results = sorts.map((sortOptionId) => buildCanonicalDecadePeriodDrafts({ ...options, sortOptionId }));
+	const errors = results.flatMap((result) => result.errors);
+	const entries = results.flatMap((result, index) => result.entries.map((entry) => {
+		if (sorts.length === 1) return entry;
+		const title = `${entry.period.label}${entry.genreName === null ? "" : ` ${entry.genreName}`} ${mediaLabel(entry.draft.editable.mediaType)} - ${sourceSortLabel(sorts[index])}`;
+		return Object.freeze({ ...entry, draft: Object.freeze({ ...entry.draft, editable: Object.freeze({ ...entry.draft.editable, title }) }) });
+	}));
+	return Object.freeze({ ok: errors.length === 0, entries: Object.freeze(entries), drafts: Object.freeze(entries.map((entry) => entry.draft)), errors: Object.freeze(errors) });
+}
+
 function logicalSourceAdvanced(advanced, genreName) {
 	return Object.freeze({
 		minimumRating: advanced.minimumRating,
@@ -708,12 +723,14 @@ export function buildDecadeSourceBundleDrafts({
 	mediaMode = "both",
 	genreNames = Object.freeze([]),
 	sortOptionId = DEFAULT_DECADES_SORT_OPTION_ID,
+	sortOptionIds,
 	advanced = DEFAULT_DECADE_SOURCE_ADVANCED,
 } = {}) {
 	const errors = [];
 	const normalizedPeriods = normalizeDecadeSourceBundlePeriods(periodIds, periodId, errors);
 	if (!DECADES_MEDIA_MODES.some((entry) => entry.id === mediaMode)) errors.push(diagnostic("INVALID_DECADE_SOURCE_MEDIA", "$decadeSource.mediaMode", "Choose Movies, Series, or Both."));
-	if (!DECADES_SORT_OPTIONS.some((option) => option.id === sortOptionId)) errors.push(diagnostic("INVALID_DECADE_SOURCE_SORT", "$decadeSource.sortOptionId", "Choose a supported Decade sort order."));
+	const sorts = orderedSourceSortIds(sortOptionIds, sortOptionId);
+	if (sorts === null) errors.push(diagnostic("INVALID_DECADE_SOURCE_SORT", "$decadeSource.sortOptionId", sourceSortSelectionError(sortOptionIds, "Choose a supported Decade sort order.")));
 	const orderedGenreNames = normalizeDecadeSourceBundleGenreNames(genreNames, mediaMode, errors);
 	const normalizedAdvanced = ordinaryBundleAdvanced(advanced, orderedGenreNames, normalizedPeriods.periodIds, errors);
 	if (errors.length > 0 || normalizedPeriods.periods.length === 0) {
@@ -726,13 +743,13 @@ export function buildDecadeSourceBundleDrafts({
 	for (const period of normalizedPeriods.periods) {
 		const periodLogicalSources = [];
 		for (const genreName of logicalGenreNames) {
-			const built = buildCanonicalDecadePeriodDrafts({
+			const built = buildDecadePeriodSortVariants({
 				periodId: period.id,
 				mediaMode,
 				genreName,
 				sortOptionId,
 				advanced: logicalSourceAdvanced(normalizedAdvanced, genreName),
-			});
+			}, sorts);
 			if (!built.ok) {
 				errors.push(...built.errors);
 				continue;
@@ -761,7 +778,7 @@ export function buildDecadeSourceBundleDrafts({
 	const drafts = logicalSources.flatMap((source) => source.drafts);
 	return Object.freeze({
 		ok: errors.length === 0,
-		configuration: errors.length === 0 ? Object.freeze({ decadeId: normalizedPeriods.decadeId, periodIds: normalizedPeriods.periodIds, mediaMode, genreNames: orderedGenreNames, sortOptionId, advanced: normalizedAdvanced }) : null,
+		configuration: errors.length === 0 ? Object.freeze({ decadeId: normalizedPeriods.decadeId, periodIds: normalizedPeriods.periodIds, mediaMode, genreNames: orderedGenreNames, sortOptionId, ...(sortOptionIds === undefined ? {} : { sortOptionIds: sorts }), advanced: normalizedAdvanced }) : null,
 		periodGroups: Object.freeze(errors.length === 0 ? periodGroups : []),
 		logicalSources: Object.freeze(errors.length === 0 ? logicalSources : []),
 		entries: Object.freeze(errors.length === 0 ? entries : []),
@@ -860,12 +877,13 @@ export function createDecadeSourceBundle(controller, {
 	mediaMode = "both",
 	genreNames = Object.freeze([]),
 	sortOptionId = DEFAULT_DECADES_SORT_OPTION_ID,
+	sortOptionIds,
 	advanced = DEFAULT_DECADE_SOURCE_ADVANCED,
 	drafts,
 	duplicateOverrideIdentity = null,
 	interactionLocked = false,
 } = {}) {
-	const configuration = { periodIds, periodId, mediaMode, genreNames, sortOptionId, advanced };
+	const configuration = { periodIds, periodId, mediaMode, genreNames, sortOptionId, sortOptionIds, advanced };
 	const validation = validateDecadeSourceBundleDrafts(drafts, configuration);
 	if (!validation.ok) return { ok: false, errors: validation.errors, warnings: [] };
 	if (interactionLocked) {
@@ -929,7 +947,7 @@ export function buildDecadesSourceDrafts(value) {
 		};
 		const logicalEntries = [];
 		const appendLogicalPeriod = (periodId, genreName = null) => {
-			const result = buildCanonicalDecadePeriodDrafts({
+			const result = buildDecadePeriodSortVariants({
 				periodId,
 				mediaMode: configuration.mediaMode,
 				genreName,
@@ -940,7 +958,7 @@ export function buildDecadesSourceDrafts(value) {
 					ordinaryExcludedGenres: Object.freeze([]),
 					exclusionsByGenre: Object.freeze({ [genreName]: Object.freeze([...(exclusionsByGenre[genreName] ?? [])]) }),
 				},
-			});
+			}, orderedSourceSortIds(configuration.sortOptionIds, configuration.sortOptionId));
 			if (result.ok) logicalEntries.push(...result.entries);
 			else errors.push(...result.errors);
 		};

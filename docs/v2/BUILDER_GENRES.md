@@ -1,5 +1,18 @@
 # V2 Builder Genres contract
 
+
+## Multiple sorting variants (#198, approved for publication)
+
+Issue [#198](https://github.com/davecollections/tmdb-id-lookup/issues/198) extends ordinary Genre Add and guided New Collection/New Folder with Popular, Recent, Top rated and Most voted checkboxes, in that order. Popular remains the default; deselecting all shows “Choose at least one option.” and prevents creation. “Choose one or more options. Movies and Series get separate sources.” explains the expansion once. Advanced settings and official media recipes apply to every variant without new implicit filters.
+
+The four established structures and intentional composite Series placements are preserved. Sort choices multiply ordinary Sources, never Folders. Default single-sort names remain unchanged; multiple-sort names retain their Genre/media context with an ASCII separator, for example Comedy Movies - Recent. Complete canonical Discover identities distinguish variants, while existing partial-group omission, elsewhere notices and explicit duplicate approval remain in force. Final counts come from actual physical additions.
+
+The current nested poster Preview retains its shell and grid, adds a single-choice **Show** row and derives unique Media choices. Ordinary Add also retains Genre switching. Active sorting/media are independent of creation selections and retained where valid when navigating. Exact candidates, Retry, request cancellation and full-query cache identity are shared with the existing Preview paths. No title request is triggered by a creation checkbox; no count is treated as a sum of unique titles across sorts. Physical editing remains one Source with one scalar sort.
+
+Owner review is complete and publication is approved; merge approval remains pending.
+
+The #198 owner-approved wording refinement labels creation choices **Sources to create**, uses “Choose one or more options. Movies and Series get separate sources.” and validates empty selections with “Choose at least one option.” Creation summaries use **Selected:** and the existing Preview variant selector uses **Show**. Single-Source editors retain **Sort titles by**. See the shared [wording convention](./BUILDER_HIERARCHY_CREATION.md#creation-sorting-and-authored-punctuation-198); this refinement changes copy and its accessibility associations only.
+
 ## 1. Status and scope
 
 Last reviewed: 2026-09-06

@@ -121,7 +121,7 @@ test("Configure always renders compact logical placement rows with Preview and R
 	assert.match(flowSource, /group\.drafts\.map\(\(draft\) => draft\.editable\.title\)/);
 	assert.match(flowSource, /Preview titles<\/button>/);
 	assert.match(flowSource, /genre-hierarchy-configure-remove/);
-	assert.match(flowSource, /Sort: \{sortLabel\} · Advanced:/);
+	assert.match(flowSource, /Selected: \{sortLabel\} · Advanced:/);
 	assert.doesNotMatch(configure, /35 verbose|physical-source rows/);
 });
 
@@ -131,7 +131,7 @@ test("Configure reuses semantic pills and explains fixed-media Genres while Appe
 	assert.match(configure, /genre-hierarchy-configuration-surface/);
 	assert.match(configure, /legend="Media"/);
 	assert.match(configure, /Applies to Genres available in both Movies and Series\./);
-	assert.match(configure, /Sort titles by/);
+	assert.match(configure, /Sources to create/);
 	assert.match(flowSource, /\$\{affected\[0\]\.name\} is \$\{fixedLabel\} and will still create a \$\{sourceLabel\} source/);
 	assert.match(flowSource, /\$\{affected\.length\} selected Genres are \$\{fixedLabel\}/);
 	assert.match(styles, /\.genre-hierarchy-configuration-surface[\s\S]*linear-gradient/);
@@ -198,7 +198,7 @@ test("Structure presents plain-language plan-derived choices without changing co
 test("Genre Preview uses exact drafts, lazy media tabs, shared nested shell, and full-query cache identity", () => {
 	assert.match(flowSource, /previewProvider\.getGenrePreview\(draft/);
 	assert.match(flowSource, /requestPreview\(group, group\.drafts\[0\], trigger\)/);
-	assert.match(flowSource, /preview\.group\.drafts\.length > 1/);
+	assert.match(flowSource, /sourcePreviewVariantGroups\(preview\.group\.drafts/);
 	assert.match(flowSource, /<NestedPreviewDialog/);
 	assert.match(flowSource, /<PosterOnlyPreviewGrid items=\{items\} limit=\{10\}/);
 	assert.match(flowSource, /No posters available\./);

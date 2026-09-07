@@ -222,7 +222,7 @@ test("People missing supported Focus artwork produces an exact safe request and 
 	const request = folderArtworkRequestForField(suggestionSet, "focusGifUrl", "POSTER");
 	assert.equal(request.repository, "davecollections/nuvio-people-assets");
 	assert.equal(request.expectedPath, "assets/people/8559/focus-poster.webp");
-	assert.equal(request.title, "Artwork request: Kátia Lund — Focus (Poster)");
+	assert.equal(request.title, "Artwork request: Kátia Lund - Focus (Poster)");
 	assert.equal(request.body, [
 		"Request: Curated Folder artwork",
 		"Family: People",
@@ -257,7 +257,7 @@ test("People requests an unregistered exact person only when canonical TMDB deta
 	});
 	assert.equal(folderArtworkSuggestionForField(suggestionSet, "coverImageUrl", "LANDSCAPE"), null);
 	const request = folderArtworkRequestForField(suggestionSet, "coverImageUrl", "LANDSCAPE");
-	assert.equal(request.title, "Artwork request: Exact Person — Landscape Tile");
+	assert.equal(request.title, "Artwork request: Exact Person - Landscape Tile");
 	assert.equal(request.expectedPath, "assets/people/999999/landscape.webp");
 
 	assert.equal(await loadFolderArtworkSuggestions({

@@ -1,3 +1,4 @@
+import { runSourceSortVariantsScenario, runExpandedDecadesScenario } from "./builder-source-sort-variants-mounted.jsx";
 import { act, createElement, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { createBuilderController } from "../../builder/src/application/index.js";
@@ -576,7 +577,7 @@ async function runStreamingCreationRequiredNameScenario() {
 			document.querySelector(".streaming-generated-source-actions button").click();
 			await afterCommittedEffects();
 		});
-		let input = document.querySelector("#streaming-source-name-AU-movie");
+		let input = document.querySelector("#streaming-source-name-AU-movie-popular");
 		await act(async () => {
 			setInputValue(input, "");
 			await afterCommittedEffects();
@@ -589,11 +590,11 @@ async function runStreamingCreationRequiredNameScenario() {
 			document.querySelector(".streaming-configure-actions .editor-apply").click();
 			await afterCommittedEffects();
 		});
-		input = document.querySelector("#streaming-source-name-AU-movie");
+		input = document.querySelector("#streaming-source-name-AU-movie-popular");
 		return {
 			activeElementIsInput: document.activeElement === input,
 			ariaInvalid: input?.getAttribute("aria-invalid") ?? null,
-			inlineError: document.querySelector("#streaming-source-name-AU-movie-error")?.textContent ?? "",
+			inlineError: document.querySelector("#streaming-source-name-AU-movie-popular-error")?.textContent ?? "",
 			alertRendered: Boolean(document.querySelector(".streaming-configure .editor-diagnostics")),
 			dialogOpen: Boolean(document.querySelector('[data-source-mode="tmdb-streaming-services"]')),
 			applyCalls,
@@ -3004,7 +3005,7 @@ async function runGenreLivePreviewScenario() {
 					genuineTmdbSources: genuineTmdbPosterImages(visibleImages),
 					posterOnly: [...grid.children].every((child) => child.tagName === "IMG"),
 					captionsAbsent: grid.querySelector("figcaption, article, small, p, span") === null && grid.textContent.trim() === "",
-					countLine: modal.querySelector(".genre-preview-tabs [aria-selected='true'], .studio-preview-single-media")?.textContent.trim() ?? null,
+					countLine: modal.querySelector(".studio-preview-single-media")?.textContent.trim() ?? null,
 				};
 			}, { label, timeoutMs: 30_000 });
 		} catch (error) {
@@ -3045,13 +3046,13 @@ async function runGenreLivePreviewScenario() {
 		await clickAndSettle(previewTrigger);
 		const movieRequest = await waitForRequest(0, "Live Genre Movie Worker request");
 		const movieReady = await waitForPreview(movieRequest, `Live Genre Movie Preview at ${window.innerWidth}px`);
-		const tabs = [...movieReady.modal.querySelectorAll('.genre-preview-tabs [role="tab"]')];
+		const tabs = [...movieReady.modal.querySelectorAll('[aria-label="Preview media"] [role="tab"]')];
 		const movieTab = required(tabs[0], "Movies tab");
 		const seriesTab = required(tabs[1], "Series tab");
 		const sharedBeforeSwitch = {
 			requestCount: requests.length,
 			movieSelected: movieTab.getAttribute("aria-selected") === "true",
-			movieCountShown: movieTab.textContent.includes(Number(movieRequest.totalResults).toLocaleString("en")),
+			movieCountShown: movieReady.countLine?.includes(Number(movieRequest.totalResults).toLocaleString("en")) ?? false,
 			seriesDeferred: seriesTab.textContent.trim() === "Series",
 		};
 
@@ -3062,7 +3063,7 @@ async function runGenreLivePreviewScenario() {
 		const sharedAfterSwitch = {
 			requestCount: requests.length,
 			seriesSelected: seriesTab.getAttribute("aria-selected") === "true",
-			seriesCountShown: seriesTab.textContent.includes(Number(seriesRequest.totalResults).toLocaleString("en")),
+			seriesCountShown: seriesReady.countLine?.includes(Number(seriesRequest.totalResults).toLocaleString("en")) ?? false,
 		};
 		await clickAndSettle(required(seriesReady.modal.querySelector("header button"), "shared Preview Close action"));
 		const sharedClose = {
@@ -3071,6 +3072,7 @@ async function runGenreLivePreviewScenario() {
 		};
 
 		await clickAndSettle(required(dialog.querySelector('input[name="genre-hierarchy-media"][value="movies"]'), "Movies media choice"));
+		await clickAndSettle(required(dialog.querySelector('input[name="genre-hierarchy-sort"][value="popular"]'), "Deselect Popular source choice"));
 		await clickAndSettle(required(dialog.querySelector('input[name="genre-hierarchy-sort"][value="recent"]'), "Recent sort choice"));
 		await clickAndSettle(required(dialog.querySelector(".genre-advanced-options > summary"), "Advanced options summary"));
 		await updateInput(dialog.querySelector("#genre-hierarchy-advanced-year-from"), "2020");
@@ -3084,13 +3086,13 @@ async function runGenreLivePreviewScenario() {
 		await clickAndSettle(required(buttonContaining(dialog.querySelector(".genre-exclusion-picker-list"), "Family"), "Family exclusion"));
 		await clickAndSettle(required(dialog.querySelector(".genre-secondary-done"), "exclusion Done action"));
 
-		previewTrigger = required(row.querySelector('button[aria-haspopup="dialog"]'), "filtered Animation Preview trigger");
+		previewTrigger = required(dialog.querySelector('.genre-hierarchy-configure-row[data-genre-name="Animation"] button[aria-haspopup="dialog"]'), "filtered Animation Preview trigger");
 		failedImageSources.clear();
 		await clickAndSettle(previewTrigger);
 		const filteredRequest = await waitForRequest(2, "Live filtered Genre Movie Worker request");
 		const filteredReady = await waitForPreview(filteredRequest, `Live filtered Genre Movie Preview at ${window.innerWidth}px`);
 		const singleMedia = {
-			tabsAbsent: filteredReady.modal.querySelector(".genre-preview-tabs") === null,
+			tabsAbsent: filteredReady.modal.querySelector('[aria-label="Preview media"]') === null,
 			countShown: filteredReady.countLine?.includes(Number(filteredRequest.totalResults).toLocaleString("en")) ?? false,
 		};
 		await clickAndSettle(required(filteredReady.modal.querySelector("header button"), "filtered Preview Close action"));
@@ -6159,7 +6161,7 @@ async function runDecadeSourceLayoutScenario() {
 		const scroll = required(dialog.querySelector(".add-source-scroll"), "Decade Add Source scroll owner");
 		const fieldset = (label) => required([...dialog.querySelectorAll("fieldset")].find((entry) => entry.querySelector(":scope > legend")?.textContent.trim().startsWith(label)), `${label} fieldset`);
 		const mediaFieldset = fieldset("Media");
-		const sortFieldset = fieldset("Sort titles by");
+		const sortFieldset = fieldset("Sources to create");
 		const decadeFieldset = fieldset("Decade");
 		let yearFieldset = fieldset("Year");
 		const genreFieldset = fieldset("Genre sources");
@@ -6280,7 +6282,8 @@ async function runDecadeSourceLayoutScenario() {
 			earlierMultiSelection,
 			resetYearSelection,
 			futureMultiSelection,
-			radioSemantics: [...mediaFieldset.querySelectorAll("input"), ...sortFieldset.querySelectorAll("input"), ...decadeFieldset.querySelectorAll("input")].every((input) => input.type === "radio" && input.getBoundingClientRect().width <= 1),
+			radioSemantics: [...mediaFieldset.querySelectorAll("input"), ...decadeFieldset.querySelectorAll("input")].every((input) => input.type === "radio" && input.getBoundingClientRect().width <= 1),
+			sortCheckboxSemantics: [...sortFieldset.querySelectorAll("input")].every((input) => input.type === "checkbox" && input.getBoundingClientRect().width <= 1),
 			yearCheckboxSemantics: [...yearFieldset.querySelectorAll("input")].every((input) => input.type === "checkbox" && input.getBoundingClientRect().width <= 1),
 			genreChoiceCount: genreFieldset.querySelectorAll('input[type="checkbox"]').length,
 			genreCheckboxSemantics: [...genreFieldset.querySelectorAll('input[type="checkbox"]')].every((input) => input.getBoundingClientRect().width <= 1),
@@ -7895,6 +7898,8 @@ async function runMountedRegressions() {
 	};
 }
 
+window.__runExpandedDecadesScenario = () => runExpandedDecadesScenario({ createController, afterCommittedEffects });
+window.__runSourceSortVariantsScenario = (wordingOnly = false) => runSourceSortVariantsScenario({ createController, importSources, clickAndSettle, afterCommittedEffects, serializedValue, inputContaining, setInputValue, titlePreviewGeometry, openEdit, withMountedEditor }, { wordingOnly });
 window.__builderSourceEditMounted = { status: "running" };
 window.__runGenreToolbarScenario = runGenreToolbarScenario;
 window.__runGenreHierarchyScenario = runGenreHierarchyScenario;
@@ -7930,7 +7935,7 @@ window.__runTmdbListLivePreviewScenario = runTmdbListLivePreviewScenario;
 window.__prepareSourceChooserKeyboardScenario = prepareSourceChooserKeyboardScenario;
 window.__inspectSourceChooserKeyboardFocus = inspectSourceChooserKeyboardFocus;
 window.__finishSourceChooserKeyboardScenario = finishSourceChooserKeyboardScenario;
-(["source-details-only", "source-round-trip-only"].some((key) => new URLSearchParams(window.location.search).has(key)) ? Promise.resolve({}) : runMountedRegressions()).then(
+(["source-details-only", "source-round-trip-only", "source-sort-variants-only"].some((key) => new URLSearchParams(window.location.search).has(key)) ? Promise.resolve({}) : runMountedRegressions()).then(
 	(results) => { window.__builderSourceEditMounted = { status: "complete", results }; },
 	(error) => {
 		window.__builderSourceEditMounted = {

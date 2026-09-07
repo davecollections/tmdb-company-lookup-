@@ -1,5 +1,6 @@
 import { buildDecadesSourceDrafts } from "./decades-source.js";
 import { currentDecadePreset } from "./decades-catalogue.js";
+import { orderedSourceSortIds, sourceDraftSortId } from "./source-sort-variants.js";
 
 export const DECADES_REPRESENTATIVE_SAMPLE_MAX_BUCKETS = 10;
 
@@ -51,7 +52,7 @@ function representativeAdvanced(configuration, decadeId) {
 	});
 }
 
-function representativeConfiguration(configuration, decadeId) {
+function representativeConfiguration(configuration, decadeId, sortOptionId) {
 	const currentPreset = currentDecadePreset(configuration.currentYear);
 	return Object.freeze({
 		selectedDecadeIds: Object.freeze([decadeId]),
@@ -59,7 +60,7 @@ function representativeConfiguration(configuration, decadeId) {
 		content: Object.freeze({ wholeDecade: false, individualYears: true, genreBreakdown: false }),
 		currentYear: configuration.currentYear,
 		...(currentPreset?.id === decadeId ? { currentYearMode: "through-current-year" } : {}),
-		sortOptionId: configuration.sortOptionId,
+		sortOptionId,
 		genreNames: Object.freeze([]),
 		decadeOrder: "oldest-first",
 		yearOrder: "oldest-first",
@@ -69,16 +70,18 @@ function representativeConfiguration(configuration, decadeId) {
 }
 
 function buildRepresentativeSample(configuration, decadeId, decadeLabel) {
-	const built = buildDecadesSourceDrafts(representativeConfiguration(configuration, decadeId));
-	if (!built.ok) return Object.freeze({ ok: false, errors: built.errors });
-	const requests = built.groups.map((group) => {
+	const variants = orderedSourceSortIds(configuration.sortOptionIds, configuration.sortOptionId).map((sortOptionId) => ({ sortOptionId, built: buildDecadesSourceDrafts(representativeConfiguration(configuration, decadeId, sortOptionId)) }));
+	const errors = variants.flatMap(({ built }) => built.errors);
+	if (errors.length) return Object.freeze({ ok: false, errors });
+	const requests = variants.flatMap(({ sortOptionId, built }) => built.groups.map((group) => {
 		const entries = selectEvenlyDistributed(group.sources, DECADES_REPRESENTATIVE_SAMPLE_MAX_BUCKETS);
 		return Object.freeze({
 			mediaType: group.mediaType,
+			sortOptionId,
 			bucketLabels: Object.freeze(entries.map((entry) => entry.period.label)),
 			drafts: Object.freeze(entries.map((entry) => entry.draft)),
 		});
-	});
+	}));
 	const period = decadeId === "1950s-and-earlier";
 	return Object.freeze({
 		ok: true,
@@ -147,6 +150,7 @@ export function buildDecadesPreviewGroups(configuration) {
 					drafts,
 					requests: Object.freeze(drafts.map((draft) => Object.freeze({
 						mediaType: draft.editable.mediaType,
+						sortOptionId: sourceDraftSortId(draft),
 						draft,
 					}))),
 				});
@@ -164,4 +168,11 @@ export function buildDecadesPreviewGroups(configuration) {
 	const sampleErrors = groups.flatMap((group) => group.errors ?? []);
 	if (sampleErrors.length > 0) return Object.freeze({ ok: false, groups: Object.freeze([]), errors: Object.freeze(sampleErrors) });
 	return Object.freeze({ ok: true, groups: Object.freeze(groups), errors: Object.freeze([]) });
+}
+
+export function resolveDecadesPreviewRequest(choice, { mediaType, sortOptionId } = {}) {
+	const requests = choice?.requests ?? [];
+	const sort = requests.some((request) => request.sortOptionId === sortOptionId) ? sortOptionId : requests[0]?.sortOptionId;
+	return requests.find((request) => request.sortOptionId === sort && request.mediaType === mediaType)
+		?? requests.find((request) => request.sortOptionId === sort) ?? null;
 }

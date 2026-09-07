@@ -411,7 +411,7 @@ export function folderArtworkRequestForField(suggestionSet, field, tileShape) {
 		`Expected repository path: ${slot.expectedPath}`,
 		"Source: Dingo's Collection Builder",
 	].join("\n");
-	const title = `Artwork request: ${suggestionSet.canonicalName} — ${slot.titleLabel}`;
+	const title = `Artwork request: ${suggestionSet.canonicalName} - ${slot.titleLabel}`;
 	const url = new URL(`https://github.com/${suggestionSet.repository}/issues/new`);
 	url.searchParams.set("title", title);
 	url.searchParams.set("body", body);

@@ -66,6 +66,8 @@ async function runMountedPage() {
 	const launcherOnly = process.env.TMDB_ID_LOOKUP_LAUNCHER_ONLY === "1";
 	const sourceDetailsOnly = process.env.TMDB_SOURCE_DETAILS_ONLY === "1";
 	const roundTripOnly = process.env.TMDB_SOURCE_ROUND_TRIP_ONLY === "1";
+	const wordingOnly = process.env.TMDB_SOURCE_SORT_WORDING_ONLY === "1";
+	const multiSortOnly = process.env.TMDB_SOURCE_SORT_VARIANTS_ONLY === "1" || wordingOnly;
 	const devToolsStartupMs = resolveDevToolsStartupTimeout(process.env.DEVTOOLS_STARTUP_MS);
 	const resources = {
 		browserExecutable: null,
@@ -174,7 +176,7 @@ async function runMountedPage() {
 		await resources.pageConnection.command("Runtime.enable");
 		const address = resources.vite.httpServer.address();
 		await resources.pageConnection.command("Page.navigate", {
-			url: `http://127.0.0.1:${address.port}/tests/fixtures/builder-source-edit-mounted.html${roundTripOnly ? "?source-round-trip-only" : sourceDetailsOnly ? "?source-details-only" : ""}`,
+			url: `http://127.0.0.1:${address.port}/tests/fixtures/builder-source-edit-mounted.html${multiSortOnly ? "?source-sort-variants-only" : roundTripOnly ? "?source-round-trip-only" : sourceDetailsOnly ? "?source-details-only" : ""}`,
 		});
 		const deadline = Date.now() + 30000;
 		while (Date.now() < deadline) {
@@ -184,6 +186,43 @@ async function runMountedPage() {
 			});
 			const result = evaluated.result?.value;
 			if (result?.status === "complete") {
+				if (multiSortOnly) {
+					const interceptionErrors = [];
+					// Isolated #198 controlled-response mode only. No live-service claim.
+					resources.pageConnection.onEvent((message) => {
+						if (message.method === "Runtime.bindingCalled" && message.params.name === "captureSourceSortPreview") {
+							const view = JSON.parse(message.params.payload);
+							resources.pageConnection.command("Page.captureScreenshot", { format: "png" }).then(async ({ data }) => {
+								await fsPromises.writeFile(path.join(os.tmpdir(), `dingo-198-preview-${view.width}-${view.height}${view.forced ? "-forced" : ""}.png`), Buffer.from(data, "base64"));
+							}).catch((error) => interceptionErrors.push(error.message)).finally(() => resources.pageConnection.command("Runtime.evaluate", { expression: "window.__finishSourceSortCapture()" }));
+							return;
+						}
+						if (message.method !== "Fetch.requestPaused") return;
+						const body = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300"><rect width="200" height="300" fill="#153746"/><text x="24" y="150" fill="#badfea">Preview fixture</text></svg>').toString("base64");
+						resources.pageConnection.command("Fetch.fulfillRequest", { requestId: message.params.requestId, responseCode: 200, responseHeaders: [{ name: "Content-Type", value: "image/svg+xml" }], body }).catch((error) => interceptionErrors.push(error.message));
+					});
+					await resources.pageConnection.command("Runtime.addBinding", { name: "captureSourceSortPreview" });
+					await resources.pageConnection.command("Fetch.enable", { patterns: [{ urlPattern: "https://*", resourceType: "Image" }] });
+					if (wordingOnly) {
+						await resources.pageConnection.command("Emulation.setDeviceMetricsOverride", { width: 360, height: 800, deviceScaleFactor: 1, mobile: true });
+						const checked = await resources.pageConnection.command("Runtime.evaluate", { expression: "window.__runSourceSortVariantsScenario(true)", awaitPromise: true, returnByValue: true });
+						if (checked.exceptionDetails) throw new Error(checked.exceptionDetails.exception?.description ?? checked.exceptionDetails.text);
+						assert.deepEqual(interceptionErrors, []);
+						return { wording: checked.result.value };
+					}
+					const sourceSortVariantWidths = [];
+					for (const [width, height, forcedColors] of [[360,800,false],[384,800,false],[393,800,false],[402,800,false],[412,800,false],[900,900,false],[393,320,false],[393,800,true]]) {
+						await resources.pageConnection.command("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: width < 900 });
+						await resources.pageConnection.command("Emulation.setEmulatedMedia", { features: [{ name: "forced-colors", value: forcedColors ? "active" : "none" }] });
+						const evaluated = await resources.pageConnection.command("Runtime.evaluate", { expression: "window.__runSourceSortVariantsScenario()", awaitPromise: true, returnByValue: true });
+						if (evaluated.exceptionDetails) throw new Error(evaluated.exceptionDetails.exception?.description ?? evaluated.exceptionDetails.text);
+						sourceSortVariantWidths.push({ ...evaluated.result.value, forcedColors });
+					}
+					assert.deepEqual(interceptionErrors, []);
+					const expanded = await resources.pageConnection.command("Runtime.evaluate", { expression: "window.__runExpandedDecadesScenario()", awaitPromise: true, returnByValue: true });
+					if (expanded.exceptionDetails) throw new Error(expanded.exceptionDetails.exception?.description ?? expanded.exceptionDetails.text);
+					return { sourceSortVariantWidths, expandedDecades: expanded.result.value };
+				}
 				if (!sourceDetailsOnly) {
 					result.results.desktopRoundTripWidths = [];
 					for (const width of [360, 384, 393, 402, 412, 900]) {
@@ -646,7 +685,7 @@ async function runMountedPage() {
 			`Mounted browser required process-tree fallback after graceful shutdown failed: ${execution.cleanupReport.browser.gracefulError?.message ?? "unknown error"}`,
 		);
 	}
-	if (!sourceDetailsOnly && !roundTripOnly && process.env.TMDB_MOUNTED_BROWSER_DIAGNOSTICS === "1") {
+	if (!sourceDetailsOnly && !roundTripOnly && !multiSortOnly && process.env.TMDB_MOUNTED_BROWSER_DIAGNOSTICS === "1") {
 		console.log(`MOUNTED_BROWSER_DIAGNOSTICS ${JSON.stringify({
 			browserExecutable: execution.cleanupReport.browserExecutable,
 			debugPort: resources.debugPort,
@@ -2379,7 +2418,7 @@ test("mounted Streaming New Collection disambiguates duplicate titles and routes
 		assert.match(result.review.runSummary, /RegionsAustralia \(AU\), United States of America \(US\)/, `${result.width}px Review Regions`);
 		assert.match(result.review.runSummary, /MediaMovies \+ Series/, `${result.width}px Review Media`);
 		assert.match(result.review.runSummary, /ServicesApple TV Store, Dekkoo/, `${result.width}px Review Services`);
-		assert.match(result.review.runSummary, /SortPopular/, `${result.width}px Review Sort`);
+		assert.match(result.review.runSummary, /SelectedPopular/, `${result.width}px Review selected sources`);
 		assert.match(result.review.runSummary, /GroupingGroup regions by service/, `${result.width}px Review Grouping`);
 		assert.equal(result.review.changeHeading, "What will change", `${result.width}px change-focused heading`);
 		assert.deepEqual(result.review.outcomeRows, [
@@ -2725,7 +2764,7 @@ test("mounted Decade Add Source stays compact, accessible, and contained at ever
 		assert.equal(result.modeId, "tmdb-decade", `${result.width}px singular Decade mode`);
 		assert.deepEqual(result.controlOrder, ["media", "sort", "decade", "year", "genres", "advanced", "generated", "preview"], `${result.width}px owner-approved control order`);
 		assert.deepEqual(result.mediaLabels, ["Media", "Movies", "Series", "Both"], `${result.width}px semantic media controls`);
-		assert.deepEqual(result.sortLabels, ["Sort titles by", "Popular", "Recent", "Top Rated", "Most Votes"], `${result.width}px semantic sort controls`);
+		assert.deepEqual(result.sortLabels, ["Sources to create", "Popular", "Recent", "Top rated", "Most voted"], `${result.width}px source creation controls`);
 		assert.equal(result.decadeChoiceCount, 8, `${result.width}px eight Decade radio pills`);
 		assert.deepEqual(result.initialYearLabels, ["All 2020s", "2020", "2021", "2022", "2023", "2024", "2025", "2026", "2027", "2028", "2029"], `${result.width}px complete configured 2020s`);
 		assert.deepEqual(result.eightiesYearLabels, ["All 1980s", "1980", "1981", "1982", "1983", "1984", "1985", "1986", "1987", "1988", "1989"], `${result.width}px whole 1980s or multiple years`);
@@ -2741,6 +2780,7 @@ test("mounted Decade Add Source stays compact, accessible, and contained at ever
 		assert.deepEqual(result.resetYearSelection, ["2020s"], `${result.width}px deterministic 2020s reset`);
 		assert.deepEqual(result.futureMultiSelection, ["year-2021", "year-2025", "year-2028"], `${result.width}px future years remain selectable and canonical`);
 		assert.equal(result.radioSemantics, true, `${result.width}px compact radio pills hide native duplication`);
+		assert.equal(result.sortCheckboxSemantics, true, `${result.width}px source creation retains hidden native checkbox semantics`);
 		assert.equal(result.yearCheckboxSemantics, true, `${result.width}px Year pills retain hidden native checkbox semantics`);
 		assert.equal(result.genreChoiceCount, 8, `${result.width}px Both Genre intersection`);
 		assert.equal(result.genreCheckboxSemantics, true, `${result.width}px Genre pills retain real hidden checkboxes`);
@@ -3354,4 +3394,29 @@ test("mounted Genre Source Edit hides Save during Help/exclusions and restores f
 		focusRestored: true,
 		footerReturned: true,
 	});
+});
+
+test("mounted multi-sort creation and existing Preview retain exact variants across mobile, desktop and forced colours", { skip: process.env.TMDB_SOURCE_SORT_VARIANTS_ONLY !== "1" }, () => {
+	assert.equal(mountedResults.sourceSortVariantWidths.length, 8);
+	for (const view of mountedResults.sourceSortVariantWidths) {
+		assert.equal(view.results.length, 9);
+		assert.deepEqual(view.errors, []);
+		for (const result of view.results) {
+			assert.equal(result.geometry.pageNoHorizontalOverflow, true, result.name);
+			assert.equal(result.geometry.closeReachable, true, result.name);
+			assert.equal(result.geometry.gridNoHorizontalScroll, true, result.name);
+			assert.ok(result.geometry.activeScrollOwnerCount <= 1, result.name);
+		}
+	}
+	const summary = mountedResults.sourceSortVariantWidths.map(({ width, height, forcedColors, results }) => ({ width, height, forcedColors, cases: results.map(({ name, requests, outputSources }) => ({ name, requests, outputSources })) }));
+	console.log("SOURCE_SORT_VARIANTS_MOUNTED " + JSON.stringify(summary));
+	console.log("EXPANDED_DECADES_MOUNTED " + JSON.stringify(mountedResults.expandedDecades));
+});
+
+test("mounted #198 wording stays scoped to creation, Preview and single-Source editing", { skip: process.env.TMDB_SOURCE_SORT_WORDING_ONLY !== "1" }, () => {
+	assert.equal(mountedResults.wording.width, 360);
+	assert.equal(mountedResults.wording.results.length, 6);
+	assert.equal(mountedResults.wording.editors.length, 3);
+	assert.deepEqual(mountedResults.wording.errors, []);
+	console.log("SOURCE_WORDING_MOUNTED " + JSON.stringify(mountedResults.wording));
 });

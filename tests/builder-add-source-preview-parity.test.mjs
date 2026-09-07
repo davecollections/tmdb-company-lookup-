@@ -358,14 +358,15 @@ test("ordinary Add Source flows expose the shared dialog while Decade remains on
 		decade: await readFile(new URL("../builder/src/ui/DecadeSourceFlow.jsx", import.meta.url), "utf8"),
 	};
 	for (const family of ["movie", "people", "studio", "network", "streaming", "genre"]) {
-		assert.match(files[family], /SourceTitlePreviewDialog/);
+		assert.match(files[family], /<SourceTitlePreviewDialog/);
 		assert.match(files[family], /Preview titles/);
 	}
 	assert.match(files.people, /quickEntry\.drafts\.drafts/);
 	assert.match(files.studio, /allDraftResult\.drafts/);
 	assert.match(files.streaming, /draftResult\.drafts/);
 	assert.match(files.genre, /const drafts = built\.ok \? built\.drafts/);
-	assert.doesNotMatch(files.decade, /SourceTitlePreviewDialog/);
+	assert.doesNotMatch(files.decade, /<SourceTitlePreviewDialog/);
+	assert.match(files.decade, /<SourcePreviewSelectors/);
 	assert.match(files.decade, /NestedPreviewDialog/);
 	assert.match(files.decade, /PosterOnlyPreviewGrid/);
 });

@@ -192,7 +192,7 @@ test("all four semantic sorts map through DISCOVER Core for Movie and TV", () =>
 		"top-rated": ["vote_average.desc", "vote_average.desc"],
 		"most-votes": ["vote_count.desc", "vote_count.desc"],
 	};
-	assert.deepEqual(GENRE_SORT_OPTIONS.map((entry) => entry.label), ["Popular", "Recent", "Top Rated", "Most Votes"]);
+	assert.deepEqual(GENRE_SORT_OPTIONS.map((entry) => entry.label), ["Popular", "Recent", "Top rated", "Most voted"]);
 	for (const option of GENRE_SORT_OPTIONS) {
 		assert.deepEqual(buildGenreSourceDrafts(["Comedy"], { sortOptionId: option.id }).drafts.map((draft) => draft.editable.sortBy), expected[option.id]);
 	}

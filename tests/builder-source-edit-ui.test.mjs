@@ -510,7 +510,7 @@ test("Streaming editor shows fixed fallback identity, four semantic sorts and no
 	assert.ok(markup.includes("Provider 8"));
 	assert.ok(markup.includes("Provider ID 8 · AU · Movies"));
 	assert.ok(markup.includes("Provider, region and media type stay fixed"));
-	for (const label of ["Popular", "Recent", "Top Rated", "Most Votes"]) assert.ok(markup.includes(label), label);
+	for (const label of ["Popular", "Recent", "Top rated", "Most voted"]) assert.ok(markup.includes(label), label);
 	assert.equal(markup.includes("Use default name"), false);
 	assert.equal(markup.includes("Title count"), false);
 	assert.equal(markup.includes('href="https://www.themoviedb.org'), false);
