@@ -2,6 +2,7 @@ import { discoverSourceIdentity, discoverSourceNodeIdentity } from "../nuvio/dis
 import { NUVIO_INVISIBLE_TITLE } from "../nuvio/titles.js";
 import { buildGenreFolderEditable } from "./genre-folder-artwork.js";
 import { groupGenreSourceDrafts, inspectGenreFolderPlan } from "./genre-source.js";
+import { sourceDraftSortId, sourceSortLabel } from "./source-sort-variants.js";
 
 export const GENRE_HIERARCHY_STRUCTURES = Object.freeze([
 	Object.freeze({ id: "genre-folders", label: "Genre folders", description: "One folder card for each Genre, with its available Movies and Series sources together inside." }),
@@ -23,6 +24,10 @@ function canonicalText(value) {
 
 function retitleDraft(draft, title) {
 	return Object.freeze({ ...draft, editable: Object.freeze({ ...draft.editable, title }) });
+}
+
+function variantTitle(title, draft, configuration) {
+	return `${title}${(configuration.sortOptionIds?.length ?? 1) > 1 ? ` - ${sourceSortLabel(sourceDraftSortId(draft))}` : ""}`;
 }
 
 function sourceEntry(group, draft, title = draft.editable.title) {
@@ -184,8 +189,8 @@ function buildGenreFolders(project, configuration, groups, statuses) {
 		const placement = configuration.compositePlacements[rule.genreName] ?? "standalone";
 		if (placement === "standalone") continue;
 		const targets = placement === "both" ? rule.targetNames : [placement];
-		const composite = groupByName.get(rule.genreName).entries.find((entry) => entry.mediaType === "TV");
-		for (const target of targets) incoming.get(target).push(sourceEntry(groupByName.get(rule.genreName), composite.draft, `${rule.genreName} Series`));
+		const composites = groupByName.get(rule.genreName).entries.filter((entry) => entry.mediaType === "TV");
+		for (const target of targets) for (const composite of composites) incoming.get(target).push(sourceEntry(groupByName.get(rule.genreName), composite.draft, variantTitle(`${rule.genreName} Series`, composite.draft, configuration)));
 		mergedNames.add(rule.genreName);
 	}
 	const evaluated = groups.flatMap((group) => {
@@ -204,10 +209,10 @@ function buildGenreFolders(project, configuration, groups, statuses) {
 	const outcomes = [...evaluated.map((folder) => folder.outcome)];
 	for (const name of mergedNames) {
 		const group = groupByName.get(name);
-		const entry = group.entries.find((candidate) => candidate.mediaType === "TV");
+		const entries = group.entries.filter((candidate) => candidate.mediaType === "TV");
 		const rule = selectedCompositeRules(groups).find((candidate) => candidate.genreName === name);
 		const targets = configuration.compositePlacements[name] === "both" ? rule.targetNames : [configuration.compositePlacements[name]];
-		outcomes.push(Object.freeze({ ...folderOutcome([sourceOutcome(project, destinationId, entry, statuses)], name, statuses), placementTargets: Object.freeze(targets) }));
+		outcomes.push(Object.freeze({ ...folderOutcome(entries.map((entry) => sourceOutcome(project, destinationId, entry, statuses)), name, statuses), placementTargets: Object.freeze(targets) }));
 	}
 	const folders = configuration.scope === "new-folder"
 		? evaluated.filter((folder) => ![statuses.ALREADY_IN_COLLECTION, statuses.PARTLY_IN_COLLECTION].includes(folder.outcome.status))
@@ -221,7 +226,7 @@ function buildMediaFolders(project, configuration, groups, statuses) {
 	const outcomes = [];
 	for (const group of groups) {
 		for (const base of group.entries) {
-			const entry = sourceEntry(group, base.draft, group.concept.name);
+			const entry = sourceEntry(group, base.draft, variantTitle(group.concept.name, base.draft, configuration));
 			const outcome = sourceOutcome(project, destinationId, entry, statuses);
 			outcomes.push(outcome);
 			if (configuration.scope !== "new-folder" || outcome.destination.length === 0) byMedia.get(entry.mediaType).push(entry);
@@ -246,19 +251,21 @@ function buildSeparateGenreFolders(project, configuration, groups, statuses, med
 	const outcomes = [];
 	const folders = [];
 	for (const group of groups) {
-		for (const entry of group.entries) {
-			if (mediaType && entry.mediaType !== mediaType) continue;
-			const outcome = sourceOutcome(project, destinationId, entry, statuses);
-			outcomes.push(outcome);
-			if (configuration.scope === "new-folder" && outcome.destination.length > 0) continue;
-			const mediaLabel = entry.mediaType === "MOVIE" ? "Movies" : "Series";
+		for (const selectedMedia of mediaType ? [mediaType] : ["MOVIE", "TV"]) {
+			const entries = group.entries.filter((entry) => entry.mediaType === selectedMedia);
+			if (!entries.length) continue;
+			const sourceOutcomes = entries.map((entry) => sourceOutcome(project, destinationId, entry, statuses));
+			outcomes.push(...sourceOutcomes);
+			const outcome = folderOutcome(sourceOutcomes, group.concept.name, statuses);
+			if (configuration.scope === "new-folder" && [statuses.ALREADY_IN_COLLECTION, statuses.PARTLY_IN_COLLECTION].includes(outcome.status)) continue;
+			const mediaLabel = selectedMedia === "MOVIE" ? "Movies" : "Series";
 			const title = configuration.structure === "separate-media-genre-folders" ? `${group.concept.name} ${mediaLabel}` : group.concept.name;
 			folders.push(Object.freeze({
 				genreName: group.concept.name,
-				mediaType: entry.mediaType,
+				mediaType: selectedMedia,
 				editable: genreFolderEditable(group.concept.name, title, configuration),
-				sources: Object.freeze([entry]),
-				outcome: folderOutcome([outcome], group.concept.name, statuses),
+				sources: Object.freeze(entries),
+				outcome,
 			}));
 		}
 	}

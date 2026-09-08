@@ -1,5 +1,20 @@
 # V2 Streaming Services contract
 
+
+## Multiple sorting variants (#198, approved for publication)
+
+Issue [#198](https://github.com/davecollections/tmdb-id-lookup/issues/198) adds creation-only multiple sorting choices to ordinary Add Source and guided New Collection/New Folder. Popular is initially selected; choices expand in Popular, Recent, Top rated, Most voted display order. An empty selection remains empty and blocks creation. The existing grouping, provider/region order and common-media rules remain authoritative. Each generated Source has one scalar media-correct sort. One provider/region with Both and two sorts creates four Sources; two providers/two regions create sixteen Sources in the existing two or four Folders.
+
+One-sort default names are unchanged. Multiple sorts use friendly names such as Recent Movies and Top rated Series, retaining provider/region context where the containing Folder does not supply it. Name drafts are keyed by provider, region, media and semantic sort. Replacing a sole choice through the empty state preserves its exact custom names unless the new variant already has its own override; transitions involving multiple choices retain independent dormant names. Custom/imported punctuation and whitespace remain untouched.
+
+The existing title Preview now has one active **Show** choice, alongside unique Media and Region controls. It resolves configured plan candidates, including already-present candidates, instead of rebuilding a separate recipe. Initial opening uses the first configured sort. Switching retains the other valid dimensions, caches exact queries, and leaves the creation set unchanged. Checkbox changes make no title requests. A single bounded body scrolls below the existing Close header.
+
+Within an otherwise trusted provider/region Folder, a different supported sort no longer blocks adding a missing variant. Exact destination matches are retained; imported unknown sorting, mixed-provider ambiguity and other existing trust guards still block automatic placement. Review and final actions describe actual additions, using one revalidated atomic operation. Physical Source editing stays scalar; no identity algorithm or saved-format change is included.
+
+Owner review is complete and publication is approved. Controlled Preview evidence does not claim live TMDB acceptance; merge approval remains pending.
+
+The #198 owner-approved wording refinement labels creation choices **Sources to create**, uses “Choose one or more options. Movies and Series get separate sources.” and validates empty selections with “Choose at least one option.” Creation summaries use **Selected:** and the existing Preview variant selector uses **Show**. Single-Source editors retain **Sort titles by**. See the shared [wording convention](./BUILDER_HIERARCHY_CREATION.md#creation-sorting-and-authored-punctuation-198); this refinement changes copy and its accessibility associations only.
+
 ## 1. Status and scope
 
 Last reviewed: 2026-09-02

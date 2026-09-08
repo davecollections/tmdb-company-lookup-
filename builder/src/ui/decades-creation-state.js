@@ -192,7 +192,7 @@ export function createDecadesCreationState({
 		currentYearMode: "full-decade",
 		genreNamesByDecade: Object.freeze({}),
 		genreContextId: "all",
-		sortOptionId: DEFAULT_DECADES_SORT_OPTION_ID,
+		sortOptionIds: Object.freeze([DEFAULT_DECADES_SORT_OPTION_ID]),
 		decadeOrder: "newest-first",
 		yearOrder: "oldest-first",
 		sourceGrouping: DEFAULT_DECADES_SOURCE_GROUPING,
@@ -420,7 +420,7 @@ export function buildDecadesCreationPlan(project, projectRevision, state) {
 		currentYearMode: state.content.individualYears && currentPresetSelected
 			? "full-decade"
 			: null,
-		sortOptionId: state.sortOptionId,
+		sortOptionIds: state.sortOptionIds,
 		genreNamesByDecade: state.content.genreBreakdown ? state.genreNamesByDecade : {},
 		decadeOrder: state.decadeOrder,
 		yearOrder: state.yearOrder,

@@ -3,6 +3,7 @@ import { isInvisibleNuvioTitle, NUVIO_INVISIBLE_TITLE } from "../nuvio/titles.js
 import { buildDecadesSourceDrafts } from "./decades-source.js";
 import { equalDecadesStructures, isDecadesStructure } from "./decades-structural.js";
 import { normalizeHierarchyShowAllTab } from "./hierarchy-presentation.js";
+import { orderedSourceSortIds, sourceDraftSortId, sourceSortLabel } from "./source-sort-variants.js";
 
 export const DECADES_CREATION_SCOPES = Object.freeze([
 	Object.freeze({ id: "new-collection", label: "New Collection" }),
@@ -136,7 +137,8 @@ function sourceEntryKey(entry) {
 	return `genre:${entry.genreName}`;
 }
 
-function titleForPhysicalFolder(entry, mixedMedia) {
+function titleForPhysicalFolder(entry, mixedMedia, multipleSorts) {
+	if (multipleSorts) return `${entry.period.label}${entry.genreName === null ? "" : ` ${entry.genreName}`}${mixedMedia ? ` ${entry.draft.editable.mediaType === "MOVIE" ? "Movies" : "Series"}` : ""} - ${sourceSortLabel(sourceDraftSortId(entry.draft))}`;
 	const base = entry.contentKind === "whole-decade"
 		? `All ${entry.period.label}`
 		: entry.contentKind === "individual-year"
@@ -146,14 +148,14 @@ function titleForPhysicalFolder(entry, mixedMedia) {
 	return `${base} ${entry.draft.editable.mediaType === "MOVIE" ? "Movies" : "Series"}`;
 }
 
-function withPhysicalFolderTitle(entry, mixedMedia) {
+function withPhysicalFolderTitle(entry, mixedMedia, multipleSorts) {
 	return Object.freeze({
 		...entry,
 		draft: Object.freeze({
 			...entry.draft,
 			editable: Object.freeze({
 				...entry.draft.editable,
-				title: titleForPhysicalFolder(entry, mixedMedia),
+				title: titleForPhysicalFolder(entry, mixedMedia, multipleSorts),
 			}),
 		}),
 	});
@@ -179,6 +181,9 @@ function pairableSourceOrder(entries, sourcePlan, decadeId) {
 			const genreDifference = genreNames.indexOf(left.genreName) - genreNames.indexOf(right.genreName);
 			if (genreDifference !== 0) return genreDifference;
 		}
+		const sorts = orderedSourceSortIds(sourcePlan.configuration.sortOptionIds, sourcePlan.configuration.sortOptionId);
+		const sortDifference = sorts.indexOf(sourceDraftSortId(left.draft)) - sorts.indexOf(sourceDraftSortId(right.draft));
+		if (sortDifference !== 0) return sortDifference;
 		return (left.draft.editable.mediaType === "MOVIE" ? 0 : 1)
 			- (right.draft.editable.mediaType === "MOVIE" ? 0 : 1);
 	});
@@ -193,7 +198,7 @@ function sourceGroupsFor(sourcePlan, decadeId, mediaTypes) {
 	if (mixedMedia && sourcePlan.configuration.sourceGrouping === "paired") {
 		entries = pairableSourceOrder(entries, sourcePlan, decadeId);
 	}
-	return entries.map((entry) => withPhysicalFolderTitle(entry, mixedMedia));
+	return entries.map((entry) => withPhysicalFolderTitle(entry, mixedMedia, (sourcePlan.configuration.sortOptionIds?.length ?? 1) > 1));
 }
 
 function orderedDecadeIds(sourcePlan) {

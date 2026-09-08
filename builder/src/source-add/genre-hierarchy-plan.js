@@ -3,6 +3,7 @@ import { createGenreAdvancedState, emptyGenreAdvancedState } from "./genre-advan
 import { officialGenreConcept } from "./genre-catalogue.js";
 import { DEFAULT_GENRE_ARTWORK_SHAPE, GENRE_ARTWORK_SHAPES } from "./genre-folder-artwork.js";
 import { normalizeHierarchyShowAllTab } from "./hierarchy-presentation.js";
+import { orderedSourceSortIds } from "./source-sort-variants.js";
 import {
 	buildGenreHierarchyStructure,
 	DEFAULT_GENRE_HIERARCHY_COLLECTION_TITLES,
@@ -46,6 +47,7 @@ const OPTION_KEYS = new Set([
 	"genres",
 	"sharedMediaChoice",
 	"sortOptionId",
+	"sortOptionIds",
 	"advanced",
 ]);
 const COLLECTION_VIEW_MODES = new Set(["TABBED_GRID", "ROWS"]);
@@ -136,6 +138,7 @@ export function createGenreHierarchyPlan(project, options) {
 	const genres = canonicalGenreNames(options.genres, errors);
 	const sharedMediaChoice = options.sharedMediaChoice ?? DEFAULT_SHARED_GENRE_MEDIA_CHOICE;
 	const sortOptionId = options.sortOptionId ?? DEFAULT_GENRE_SORT_OPTION_ID;
+	const sortOptionIds = options.sortOptionIds === undefined ? undefined : orderedSourceSortIds(options.sortOptionIds);
 	const advanced = createGenreAdvancedState(options.advanced ?? emptyGenreAdvancedState());
 	const structure = options.structure ?? DEFAULT_GENRE_HIERARCHY_STRUCTURE;
 	let folderTitleVisibility = options.folderTitleVisibility
@@ -189,6 +192,7 @@ export function createGenreHierarchyPlan(project, options) {
 		genres,
 		sharedMediaChoice,
 		sortOptionId,
+		sortOptionIds: options.sortOptionIds,
 		advanced,
 		titleMode: GENRE_SOURCE_TITLE_MODES.HIERARCHY,
 	};
@@ -228,6 +232,7 @@ export function createGenreHierarchyPlan(project, options) {
 		genres,
 		sharedMediaChoice,
 		sortOptionId,
+		...(sortOptionIds === undefined ? {} : { sortOptionIds }),
 		advanced,
 		compositePlacements,
 		effectiveMedia,
@@ -295,6 +300,7 @@ function rebuildOptions(plan) {
 		genres: plan.configuration.genres,
 		sharedMediaChoice: plan.configuration.sharedMediaChoice,
 		sortOptionId: plan.configuration.sortOptionId,
+		sortOptionIds: plan.configuration.sortOptionIds,
 		advanced: plan.configuration.advanced,
 	};
 }

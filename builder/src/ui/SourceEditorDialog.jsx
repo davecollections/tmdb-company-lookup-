@@ -228,7 +228,7 @@ export function PeopleEditorFields({
 			{countState.status === "failed" ? (
 				<div className="source-edit-count-failure" role="status">
 					<span>Couldn’t check titles</span>
-					<span aria-hidden="true">—</span>
+					<span aria-hidden="true">to</span>
 					<button type="button" onClick={onRetryCounts}>Retry</button>
 				</div>
 			) : null}

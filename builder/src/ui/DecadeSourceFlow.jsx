@@ -30,6 +30,9 @@ import { handleDialogKeyDown } from "./modal-focus.js";
 import { NestedPreviewDialog } from "./NestedPreviewDialog.jsx";
 import { PosterOnlyPreviewGrid } from "./PosterOnlyPreviewGrid.jsx";
 import { SemanticSortChoices } from "./SemanticSortChoices.jsx";
+import { SourcePreviewSelectors, SourcePreviewContent } from "./SourceTitlePreviewDialog.jsx";
+import { resolveSourcePreviewDraft, sourcePreviewVariantGroups, sourcePreviewVariantKey, sourcePreviewContext } from "../source-add/source-title-preview.js";
+import { sourceDraftSortId } from "../source-add/source-sort-variants.js";
 import { SourceElsewhereNotice } from "./SourceElsewhereNotice.jsx";
 
 const usePrePaintLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
@@ -116,31 +119,33 @@ function DecadeSourcePreview({ preview, onChangePeriod, onChangeLogicalSource, o
 			ariaLabelledBy="decade-add-preview-title"
 			backdropClassName="franchise-preview-backdrop studio-preview-backdrop decades-preview-backdrop decade-add-preview-backdrop"
 			backdropProps={{ "data-decade-add-preview-backdrop": "true" }}
-			dialogClassName="franchise-preview-modal studio-preview-modal decades-preview-modal decade-add-preview-modal"
+			dialogClassName="franchise-preview-modal studio-preview-modal decades-preview-modal decade-add-preview-modal source-sort-preview-modal"
 			dialogProps={{ "data-has-dimensions": hasDimensions ? "true" : "false" }}
 			dialogRef={dialogRef}
 			initialFocusRef={closeRef}
 			onClose={onClose}
 		>
 			<header><div><p className="panel-kicker">Title preview</p><h3 id="decade-add-preview-title">{preview.periodGroup.selectorLabel}</h3></div><button ref={closeRef} type="button" onClick={onClose}>Close</button></header>
-			{hasDimensions ? <div className="decade-add-preview-dimensions">
-				{hasYearSelector ? <PreviewDimension label="Year" ariaLabel="Preview year" className="decade-add-preview-year-selector" choices={preview.periodGroups} selectedKey={preview.periodGroup.key} onChange={onChangePeriod} /> : null}
-				{hasSourceSelector ? <PreviewDimension label="Source" ariaLabel="Preview source" className="decade-add-preview-source-selector" choices={preview.periodGroup.logicalSources} selectedKey={preview.logicalSource.key} onChange={onChangeLogicalSource} /> : null}
-				{hasMediaSelector ? <PreviewDimension label="Media" ariaLabel="Preview media" className="decade-add-preview-media-selector" choices={preview.logicalSource.drafts.map((draft) => ({ key: draft.editable.mediaType, selectorLabel: mediaLabel(draft.editable.mediaType), draft }))} selectedKey={preview.draft.editable.mediaType} onChange={(choice) => onChangeDraft(choice.draft)} /> : null}
-			</div> : null}
-			<div className="decades-preview-content decade-add-preview-content">
-				{preview.status === "loading" ? <p className="studio-preview-state" role="status">Preparing {activeMedia.toLowerCase()} preview…</p> : null}
-				{preview.status === "error" ? <div className="studio-preview-state add-source-request-state" role="alert"><p>{preview.error?.message ?? "This Decade preview could not be prepared."}</p><button type="button" onClick={onRetry}>Retry</button></div> : null}
-				{preview.status === "ready" ? <PosterOnlyPreviewGrid items={preview.data?.results ?? []} limit={10} className="franchise-preview-grid studio-preview-grid decades-preview-grid decade-add-preview-grid" ariaLabel={`${activeMedia} poster preview`} altPrefix={activeMedia} emptyMessage="No posters available." /> : null}
-			</div>
+			<SourcePreviewContent>
+				{hasDimensions ? <div className="decade-add-preview-dimensions">
+					{hasYearSelector ? <PreviewDimension label="Year" ariaLabel="Preview year" className="decade-add-preview-year-selector" choices={preview.periodGroups} selectedKey={preview.periodGroup.key} onChange={onChangePeriod} /> : null}
+					{hasSourceSelector ? <PreviewDimension label="Source" ariaLabel="Preview source" className="decade-add-preview-source-selector" choices={preview.periodGroup.logicalSources} selectedKey={preview.logicalSource.key} onChange={onChangeLogicalSource} /> : null}
+					<SourcePreviewSelectors groups={sourcePreviewVariantGroups(preview.logicalSource.drafts, preview.draft, onChangeDraft)} />
+				</div> : null}
+				<div className="decades-preview-content decade-add-preview-content">
+					<p className="studio-preview-single-media">{preview.draft.editable.title} · {sourcePreviewContext(preview.draft)}</p>
+					{preview.status === "loading" ? <p className="studio-preview-state" role="status">Preparing {activeMedia.toLowerCase()} preview…</p> : null}
+					{preview.status === "error" ? <div className="studio-preview-state add-source-request-state" role="alert"><p>{preview.error?.message ?? "This Decade preview could not be prepared."}</p><button type="button" onClick={onRetry}>Retry</button></div> : null}
+					{preview.status === "ready" ? <PosterOnlyPreviewGrid items={preview.data?.results ?? []} limit={10} className="franchise-preview-grid studio-preview-grid decades-preview-grid decade-add-preview-grid" ariaLabel={`${activeMedia} poster preview`} altPrefix={activeMedia} emptyMessage="No posters available." /> : null}
+				</div>
+			</SourcePreviewContent>
 		</NestedPreviewDialog>
 	);
 }
 
-function DecadeSourceReview({ drafts, duplicates, sortOptionId }) {
+function DecadeSourceReview({ drafts, duplicates, sortOptionIds }) {
 	const duplicateDrafts = new Set(duplicates.duplicateDrafts);
 	const elsewhereDrafts = new Set(duplicates.elsewhereDrafts);
-	const sortLabel = DECADES_SORT_OPTIONS.find((option) => option.id === sortOptionId)?.label ?? sortOptionId;
 	const duplicateCount = duplicates.duplicateDrafts.length;
 	const missingCount = duplicates.missingDrafts.length;
 	return (
@@ -149,7 +154,7 @@ function DecadeSourceReview({ drafts, duplicates, sortOptionId }) {
 			<ul className="genre-review-list decade-source-review-list">{drafts.map((draft, index) => {
 				const status = duplicateDrafts.has(draft) ? "destination-duplicate" : elsewhereDrafts.has(draft) ? "elsewhere" : "ready";
 				const label = status === "destination-duplicate" ? "Already in this folder" : status === "elsewhere" ? "Exists elsewhere" : "Ready to add";
-				return <li key={`${draft.editable.title}-${draft.editable.mediaType}-${index}`}><div><strong>{draft.editable.title}</strong><span>{mediaLabel(draft.editable.mediaType)} · {sortLabel}</span></div><span data-status={status}>{label}</span></li>;
+				return <li key={sourcePreviewVariantKey(draft)}><div><strong>{draft.editable.title}</strong><span>{sourcePreviewContext(draft)}</span></div><span data-status={status}>{label}</span></li>;
 			})}</ul>
 			{duplicateCount > 0 ? <p className="genre-attention-note" role="status">{duplicateCount === drafts.length ? `All ${drafts.length} configured sources already exist in this folder. Use Add all anyway only if you intentionally want duplicate sources.` : `${drafts.length} configured: ${duplicateCount} already ${duplicateCount === 1 ? "exists" : "exist"} here. Normal Add will add ${missingCount} new source${missingCount === 1 ? "" : "s"}.`}</p> : null}
 			<SourceElsewhereNotice occurrences={duplicates.elsewhere} heading={duplicates.elsewhere.length === 1 ? "A matching Decade source exists elsewhere" : "Matching Decade sources exist elsewhere"} action={duplicates.elsewhere.length === 1 ? "You can still add it here." : "You can still add them here."} />
@@ -162,7 +167,7 @@ export function DecadeSourceFlow({ project, folder, previewProvider, onBack, onC
 	const [periodIds, setPeriodIds] = useState(() => [DEFAULT_DECADE_SOURCE_PERIOD_ID]);
 	const [mediaMode, setMediaMode] = useState("both");
 	const [genreNames, setGenreNames] = useState([]);
-	const [sortOptionId, setSortOptionId] = useState(DEFAULT_DECADES_SORT_OPTION_ID);
+	const [sortOptionIds, setSortOptionIds] = useState([DEFAULT_DECADES_SORT_OPTION_ID]);
 	const [advanced, setAdvanced] = useState(DEFAULT_DECADE_SOURCE_ADVANCED);
 	const [reconciliationNotice, setReconciliationNotice] = useState("");
 	const [exclusionContextId, setExclusionContextId] = useState("general");
@@ -182,7 +187,7 @@ export function DecadeSourceFlow({ project, folder, previewProvider, onBack, onC
 	const submissionGateRef = useRef(createSourceSubmissionGate());
 	if (previewCoordinatorRef.current === null) previewCoordinatorRef.current = createAsyncRequestCoordinator();
 
-	const configuration = useMemo(() => ({ periodIds, mediaMode, genreNames, sortOptionId, advanced }), [advanced, genreNames, mediaMode, periodIds, sortOptionId]);
+	const configuration = useMemo(() => ({ periodIds, mediaMode, genreNames, sortOptionIds, advanced }), [advanced, genreNames, mediaMode, periodIds, sortOptionIds]);
 	const built = useMemo(() => buildDecadeSourceBundleDrafts(configuration), [configuration]);
 	const drafts = built.ok ? built.drafts : Object.freeze([]);
 	const logicalSources = built.ok ? built.logicalSources : Object.freeze([]);
@@ -328,7 +333,7 @@ export function DecadeSourceFlow({ project, folder, previewProvider, onBack, onC
 						<div ref={scrollRef} className="add-source-scroll" inert={secondarySurface || preview || undefined} aria-hidden={secondarySurface || preview ? "true" : undefined}>
 							<section className="decade-source-editor">
 								<SemanticSortChoices options={DECADES_MEDIA_MODES} selectedId={mediaMode} name="decade-source-media" legend="Media" onChange={changeMedia} fieldsetProps={{ "data-decade-source-control": "media" }} />
-								<SemanticSortChoices options={DECADES_SORT_OPTIONS} selectedId={sortOptionId} name="decade-source-sort" legend="Sort titles by" onChange={(value) => { setSortOptionId(value); setDiagnostic(null); }} fieldsetProps={{ "data-decade-source-control": "sort" }} />
+								<SemanticSortChoices options={DECADES_SORT_OPTIONS} selectedIds={sortOptionIds} helper="Choose one or more options. Movies and Series get separate sources." name="decade-source-sort" validationMessageId="decade-source-sort-error" legend="Sources to create" onChange={(value) => { setSortOptionIds(value); setDiagnostic(null); }} fieldsetProps={{ "data-decade-source-control": "sort" }} />
 								<SemanticSortChoices options={decadeOptions} selectedId={decadeId} name="decade-source-decade" legend="Decade" onChange={changeDecade} fieldsetProps={{ "data-decade-source-control": "decade" }} />
 								<DecadePeriodChoices options={yearOptions} selectedIds={periodIds} helper={selectedPreset.id === "1950s-and-earlier" ? "Choose the whole period or any individual years." : "Choose the whole decade or any individual years."} onToggle={togglePeriod} />
 								<fieldset className="decade-source-genre-sources" data-decade-source-control="genres">
@@ -340,9 +345,9 @@ export function DecadeSourceFlow({ project, folder, previewProvider, onBack, onC
 									{reconciliationNotice ? <p className="genre-fixed-media-note" role="status">{reconciliationNotice}</p> : null}
 								</fieldset>
 								<DecadesAdvancedOptions value={advanced} exclusionSummary={exclusionCount === 0 ? "No Genre exclusions configured" : `${exclusionCount} Genre exclusion${exclusionCount === 1 ? "" : "s"} configured across generated source choices`} onChange={(value) => { setAdvanced(reconcileAdvanced(value, mediaMode, genreNames)); setDiagnostic(null); }} onOpenSecondary={openSecondary} idPrefix="decade-source-advanced" />
-								{built.errors.length > 0 ? <ul className="genre-advanced-errors" role="alert">{built.errors.map((error) => <li key={`${error.code}-${error.path}-${error.message}`}>{error.message}</li>)}</ul> : null}
+								{built.errors.length > 0 ? <ul className="genre-advanced-errors" role="alert">{built.errors.map((error) => <li id={error.code === "INVALID_DECADE_SOURCE_SORT" ? "decade-source-sort-error" : undefined} key={`${error.code}-${error.path}-${error.message}`}>{error.message}</li>)}</ul> : null}
 								{diagnostic ? <div className="editor-diagnostics" role="alert"><p>{diagnostic.message}</p></div> : null}
-								<DecadeSourceReview drafts={drafts} duplicates={duplicates} sortOptionId={sortOptionId} />
+								<DecadeSourceReview drafts={drafts} duplicates={duplicates} sortOptionIds={sortOptionIds} />
 								<div className="source-edit-preview-action genre-hierarchy-configure-row-actions decade-source-preview-action"><button type="button" aria-haspopup="dialog" disabled={!previewAvailable || isApplying} onClick={(event) => requestPreview(built.periodGroups[0], built.periodGroups[0]?.logicalSources[0], built.periodGroups[0]?.logicalSources[0]?.drafts[0], event.currentTarget)}>Preview titles</button>{!previewAvailable ? <p className="editor-field-help" role="status">Preview is unavailable until the current configuration is valid.</p> : null}</div>
 							</section>
 						</div>
@@ -354,11 +359,11 @@ export function DecadeSourceFlow({ project, folder, previewProvider, onBack, onC
 			{preview ? <DecadeSourcePreview preview={preview} onChangePeriod={(periodGroup) => {
 				if (periodGroup.key === preview.periodGroup.key) return;
 				const logicalSource = periodGroup.logicalSources.find((source) => source.variantKey === preview.logicalSource.variantKey) ?? periodGroup.logicalSources[0];
-				const draft = logicalSource.drafts.find((entry) => entry.editable.mediaType === preview.draft.editable.mediaType) ?? logicalSource.drafts[0];
+				const draft = resolveSourcePreviewDraft(logicalSource.drafts, { mediaType: preview.draft.editable.mediaType, sortOptionId: sourceDraftSortId(preview.draft) });
 				requestPreview(periodGroup, logicalSource, draft);
 			}} onChangeLogicalSource={(logicalSource) => {
 				if (logicalSource.key === preview.logicalSource.key) return;
-				const draft = logicalSource.drafts.find((entry) => entry.editable.mediaType === preview.draft.editable.mediaType) ?? logicalSource.drafts[0];
+				const draft = resolveSourcePreviewDraft(logicalSource.drafts, { mediaType: preview.draft.editable.mediaType, sortOptionId: sourceDraftSortId(preview.draft) });
 				requestPreview(preview.periodGroup, logicalSource, draft);
 			}} onChangeDraft={(draft) => { if (draft !== preview.draft) requestPreview(preview.periodGroup, preview.logicalSource, draft); }} onClose={closePreview} onRetry={() => requestPreview(preview.periodGroup, preview.logicalSource, preview.draft)} /> : null}
 		</div>

@@ -1,5 +1,20 @@
 # V2 Builder Decades
 
+
+## Multiple sorting variants (#198, approved for publication)
+
+Issue [#198](https://github.com/davecollections/tmdb-id-lookup/issues/198) adds creation-only Popular, Recent, Top rated and Most voted selections to guided Decades and ordinary Decade/Year Add. Display order determines expansion order; Popular is the default and an explicit empty set blocks creation. Each Source still saves one scalar sort. Shared Advanced settings apply consistently without new implicit filters.
+
+Guided content remains additive: overview + individual years + decade-level Genres, with no Year × Genre expansion. Two decades with overview, ten years and two Genres, Both media and two sorts produce 104 Sources. Ordinary Add retains its period × (general + selected Genres) × media × sort expansion: three years, two Genres, Both and two sorts produce 36 Sources. Existing Folder/Collection structures, chronology and Movies-first/paired ordering remain authoritative. Single-sort names stay unchanged. Multiple-sort names are period-first, such as 1980s - Recent, 1980 - Top rated and 1980s Comedy - Popular, adding Movies/Series where the physical Folder does not supply that context.
+
+The existing title Preview keeps its Decade sample and exact year/source navigation, Movies/Series choices and poster grid. A separate single-choice **Show** row lists only configured sorts. Year/source changes preserve active sort/media where valid; sort changes preserve the active year/sample/media. All changes happen in the same nested dialog. One bounded content body scrolls below the existing Close header, keeping short screens usable.
+
+Exact Preview descriptors come from validated creation drafts. Sample descriptors remain explicitly representative and distinct from exact Source state. A sample fetches at most ten year buckets for one active media/sort, with existing filter/current-year semantics; other sorts remain lazy. Matching exact-year queries can reuse the underlying query cache without turning the sample into an exact Source result. Retry, supersession, cancellation and context-bound counts remain variant-specific. Checkbox changes make no requests and Preview does not alter creation output.
+
+Existing destination-group omission and atomic application remain unchanged. The physical editor continues to edit a single Source and retains #196 optional-null/raw preservation. Owner review is complete; merge approval remains pending.
+
+The #198 owner-approved wording refinement labels creation choices **Sources to create**, uses “Choose one or more options. Movies and Series get separate sources.” and validates empty selections with “Choose at least one option.” Creation summaries use **Selected:** and the existing Preview variant selector uses **Show**. Single-Source editors retain **Sort titles by**. See the shared [wording convention](./BUILDER_HIERARCHY_CREATION.md#creation-sorting-and-authored-punctuation-198); this refinement changes copy and its accessibility associations only.
+
 ## 1. Status and boundary
 
 Issue [#196](https://github.com/davecollections/tmdb-id-lookup/issues/196), in local owner review, preserves Edit for otherwise valid Movie/Series Decade, Year and early-period Sources whose unused optional filters are expanded to null by Nuvio desktop. Optional Genre, rating, vote, language, country and exclusion controls read those nulls as inactive; zero ratings/votes remain zero. Canonical periods, required media and meaningful malformed values retain their safeguards. Import, opening and untouched no-op Save do not rewrite the Source. Intentional Advanced editing may omit unused known null filters while preserving unknown data and raw snapshots; see [Source editing](./BUILDER_SOURCE_EDITING.md#desktop-round-trip-preservation).

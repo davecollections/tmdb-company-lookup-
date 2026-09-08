@@ -17,6 +17,15 @@ Decision labels mean:
 
 Implementation, deterministic tests, and confirmed manual Nuvio evidence override obsolete plans. [`BUILDER_KNOWLEDGE.md`](./BUILDER_KNOWLEDGE.md) owns the detailed technical contract.
 
+
+## 2026-09-07 - First-stage multiple sorting creation (#198)
+
+The owner-approved first stage covers Streaming, Genres and Decades/Years in ordinary Add and guided creation. Selecting several existing semantic sorts creates ordinary scalar-sort Sources within existing structures; it does not introduce a saved multi-sort type or sort-specific Folders. The existing title Preview keeps its visual design and nested navigation, with a separate active **Show** selector alongside Media and applicable Region/Genre/Year/Source choices. Preview selections do not alter creation selections. Authored copy and generated names follow the [ASCII-separator convention](./BUILDER_HIERARCHY_CREATION.md#creation-sorting-and-authored-punctuation-198), preserving custom/imported data.
+
+Issue [#198](https://github.com/davecollections/tmdb-id-lookup/issues/198) has completed owner review and is approved for publication, pending separate merge approval. People, Studios and Networks remain a later stage; Franchises are excluded by owner decision and TMDB Lists retain original order. This work does not expand the separate MDBList roadmap note below.
+
+The #198 owner-approved wording refinement labels creation choices **Sources to create**, uses “Choose one or more options. Movies and Series get separate sources.” and validates empty selections with “Choose at least one option.” Creation summaries use **Selected:** and the existing Preview variant selector uses **Show**. Single-Source editors retain **Sort titles by**. See the shared [wording convention](./BUILDER_HIERARCHY_CREATION.md#creation-sorting-and-authored-punctuation-198); this refinement changes copy and its accessibility associations only.
+
 ## 1. Product purpose
 
 **Confirmed**
@@ -494,6 +503,8 @@ Trakt integration remains outside current project scope; a possible future colou
 25. Optional Nuvio connection only after its product, authentication, security, and replacement contract is verified.
 
 This is a dependency map, not a rigid release schedule. Each step requires its own approved issue and may be refined by stronger evidence.
+
+**MDBList lookup and potential native Collection sources** — Native Nuvio support is under consideration in [NuvioTV issue #2812](https://github.com/NuvioMedia/NuvioTV/issues/2812); this proposal does not guarantee native Collection support or a release date. The owner is considering an initial lookup/search-only experience for list lookup and UI testing, with Create Source omitted or disabled. Whether to build that trial and its exact presentation remain undecided. Native Source creation/export waits for verified Nuvio support and its actual format; do not guess provider fields, authentication/export behaviour, or output format. MDBList is not a dependency of multi-select sorting. Account/watch-history integration is outside this proposed Builder lookup scope.
 
 ## 19. Open decisions
 

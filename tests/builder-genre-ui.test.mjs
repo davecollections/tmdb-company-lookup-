@@ -69,7 +69,7 @@ function configureMarkup(overrides = {}) {
 		collectionName: "My Collection",
 		destinationMode: "current-folder",
 		sharedMediaChoice: "both",
-		sortOptionId: "popular",
+		sortOptionIds: ["popular"],
 		advanced: emptyGenreAdvancedState(),
 		drafts,
 		duplicates: { destination: [], duplicateDrafts: [], missingDrafts: drafts, elsewhere: [] },
@@ -177,7 +177,7 @@ test("multi-Genre configure offers destination choices, removable summaries and 
 		drafts,
 		duplicates: { destination: [drafts[0]], duplicateDrafts: [drafts[0]], missingDrafts: drafts.slice(1), elsewhere: [{ identity: "elsewhere" }], elsewhereDrafts: [drafts[1]] },
 	});
-	for (const label of ["Configure &amp; review", "How would you like these added?", "Add all to this folder", "One folder per genre", "Favourites", "For genres available in both Movies and Series", "Sort titles by", "Advanced options", "What do these options do?", "Sources to add · 3", "Already in this folder", "Exists elsewhere", "A matching source exists elsewhere in this project", "You can still add it here.", "Genre exclusions", "No genre exclusions configured"]) assert.ok(markup.includes(label), label);
+	for (const label of ["Configure &amp; review", "How would you like these added?", "Add all to this folder", "One folder per genre", "Favourites", "For genres available in both Movies and Series", "Sources to create", "Advanced options", "What do these options do?", "Sources to add · 3", "Already in this folder", "Exists elsewhere", "A matching source exists elsewhere in this project", "You can still add it here.", "Genre exclusions", "No genre exclusions configured"]) assert.ok(markup.includes(label), label);
 	assert.equal(markup.includes("data-attention"), false);
 	assert.equal(markup.includes("genre-elsewhere-note"), false);
 	assert.ok(markup.includes("source-elsewhere-note"));
@@ -388,7 +388,7 @@ test("Genre Source Edit shares the advanced controls while Genre identity and me
 	assert.equal((markup.match(/class="genre-number-input"/g) ?? []).length, 5);
 	assert.equal(markup.includes("? What do these options do?"), false);
 	assert.equal(markup.includes("physical source"), false);
-	for (const label of ["Popular", "Recent", "Top Rated", "Most Votes"]) assert.ok(markup.includes(`>${label}<`), label);
+	for (const label of ["Popular", "Recent", "Top rated", "Most voted"]) assert.ok(markup.includes(`>${label}<`), label);
 	assert.doesNotMatch(read("builder/src/styles.css"), /\.genre-edit-mark\s*\{/);
 });
 

@@ -210,7 +210,7 @@ test("Configure uses the shared strict-common result and includes generated dupl
 		provider: selectedProvider,
 		regions: [us, au],
 		mediaChoice: "both",
-		sortOptionId: "popular",
+		sortOptionIds: ["popular"],
 		drafts,
 		duplicateReview: {
 			destination: [{ identity: movieIdentity, mediaType: "MOVIE", regionCode: "US" }],
@@ -220,14 +220,14 @@ test("Configure uses the shared strict-common result and includes generated dupl
 		onMediaChange() {},
 		onSortChange() {},
 	}));
-	for (const label of ["Movies", "Series", "Both", "Popular", "Recent", "Top Rated", "Most Votes"]) assert.ok(markup.includes(`>${label}<`), label);
+	for (const label of ["Movies", "Series", "Both", "Popular", "Recent", "Top rated", "Most voted"]) assert.ok(markup.includes(`>${label}<`), label);
 	assert.ok(markup.includes("2 regions · US · AU"));
 	assert.ok(markup.includes("4 sources configured"));
 	assert.ok(markup.includes("3 to add"));
-	assert.ok(markup.includes("US · Movies"));
-	assert.ok(markup.includes("US · Series"));
-	assert.ok(markup.includes("AU · Movies"));
-	assert.ok(markup.includes("AU · Series"));
+	assert.ok(markup.includes("US · Popular Movies"));
+	assert.ok(markup.includes("US · Popular Series"));
+	assert.ok(markup.includes("AU · Popular Movies"));
+	assert.ok(markup.includes("AU · Popular Series"));
 	assert.ok(markup.includes("Already exists"));
 	assert.ok(markup.includes("This source exists elsewhere"));
 	assert.equal(markup.includes("JustWatch"), false);
@@ -240,12 +240,12 @@ test("Configure exposes compact independent source-name editing with defaults an
 		provider: selectedProvider,
 		regions: [au],
 		mediaChoice: "both",
-		sortOptionId: "popular",
+		sortOptionIds: ["popular"],
 		drafts,
 		duplicateReview: { destination: [], elsewhere: [] },
-		expandedCandidateKey: "AU|MOVIE",
-		sourceTitles: { "AU|MOVIE": "Cinema shelf", "AU|TV": "Series shelf" },
-		titleErrors: new Map([["AU|MOVIE", { message: "Enter a name for this source before adding it." }]]),
+		expandedCandidateKey: "AU|MOVIE|popular",
+		sourceTitles: { "AU|MOVIE|popular": "Cinema shelf", "AU|TV|popular": "Series shelf" },
+		titleErrors: new Map([["AU|MOVIE|popular", { message: "Enter a name for this source before adding it." }]]),
 		onMediaChange() {},
 		onSortChange() {},
 		onEditName() {},
@@ -268,7 +268,7 @@ test("Configure fails safely if runtime availability changes after Provider elig
 		provider: incompatibleProvider,
 		regions: [au, us],
 		mediaChoice: null,
-		sortOptionId: "popular",
+		sortOptionIds: ["popular"],
 		drafts: [],
 		duplicateReview: { destination: [], elsewhere: [] },
 		applyDiagnostic: null,
@@ -322,7 +322,7 @@ test("flow derives eligible providers while retaining provider-keyed title draft
 	assert.match(source, /const \[sourceTitleDrafts, setSourceTitleDrafts\] = useState\(\{\}\)/);
 	assert.match(source, /streamingSourceTitlesForProvider\(sourceTitleDrafts, selectedProvider\?\.id\)/);
 	assert.doesNotMatch(source, /setSourceTitles\(\{\}\)/);
-	assert.match(source, /streamingSourceTitleDraftKey\(selectedProvider\?\.id, regionCode, mediaType\)/);
+	assert.match(source, /streamingSourceTitleDraftKey\(selectedProvider\?\.id, regionCode, mediaType, sortId\)/);
 	assert.match(source, /onUseDefaultName=\{\(candidateKey\) => \{[\s\S]*delete next\[draftKey\]/);
 	assert.doesNotMatch(source, /streamingProviderSupportedRegions/);
 	assert.doesNotMatch(source, /multiSelect|Select multiple|proceedToConfigure\(\[region\]\)/);

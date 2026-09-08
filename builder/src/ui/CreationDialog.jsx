@@ -1,3 +1,7 @@
+import { SourcePreviewSelectors, SourcePreviewContent } from "./SourceTitlePreviewDialog.jsx";
+import { sourcePreviewVariantGroups, sourcePreviewContext, sourcePreviewVariantKey } from "../source-add/source-title-preview.js";
+import { resolveDecadesPreviewRequest } from "../source-add/decades-preview.js";
+import { sourceDraftSortId } from "../source-add/source-sort-variants.js";
 import {
 	useEffect,
 	useLayoutEffect,
@@ -472,16 +476,19 @@ export function DecadesTitlePreview({ preview, onChangeChoice, onChangeRequest, 
 		? decadesRepresentativeItems(preview.data?.results ?? [])
 		: preview.data?.results ?? [];
 	return (
-		<NestedPreviewDialog ariaLabelledBy="decades-preview-title" backdropClassName="franchise-preview-backdrop studio-preview-backdrop decades-preview-backdrop" backdropProps={{ "data-decades-preview-backdrop": "true" }} dialogClassName="franchise-preview-modal studio-preview-modal decades-preview-modal" dialogRef={dialogRef} initialFocusRef={closeRef} onClose={onClose}>
+		<NestedPreviewDialog ariaLabelledBy="decades-preview-title" backdropClassName="franchise-preview-backdrop studio-preview-backdrop decades-preview-backdrop" backdropProps={{ "data-decades-preview-backdrop": "true" }} dialogClassName="franchise-preview-modal studio-preview-modal decades-preview-modal source-sort-preview-modal" dialogRef={dialogRef} initialFocusRef={closeRef} onClose={onClose}>
 			<header><div><p className="panel-kicker">Title preview</p><h3 id="decades-preview-title">{preview.group.decadeLabel}</h3></div><button ref={closeRef} type="button" onClick={onClose}>Close</button></header>
-			<div className="studio-preview-tabs decades-preview-source-selector" role="tablist" aria-label="Preview source">{preview.group.choices.map((choice) => <button key={choice.key} type="button" role="tab" aria-selected={choice.key === preview.choice.key} onClick={() => onChangeChoice(choice)}>{choice.selectorLabel}</button>)}</div>
-			<div className="decades-preview-content">
-				{sampleSelected ? <p className="decades-preview-sample-helper">{preview.choice.helper}</p> : null}
-				{preview.choice.requests.length > 1 ? <div className="studio-preview-tabs decades-preview-tabs" role="tablist" aria-label="Preview media">{preview.choice.requests.map((request) => <button key={request.mediaType} type="button" role="tab" aria-selected={request.mediaType === preview.request.mediaType} onClick={() => onChangeRequest(request)}>{request.mediaType === "TV" ? "Series" : "Movies"}</button>)}</div> : <p className="studio-preview-single-media">{activeMedia}</p>}
-				{preview.status === "loading" ? <p className="studio-preview-state" role="status">Preparing {activeMedia.toLowerCase()} preview…</p> : null}
-				{preview.status === "error" ? <div className="studio-preview-state add-source-request-state" role="alert"><p>{preview.error?.message ?? "This Decade preview could not be prepared."}</p><button type="button" onClick={onRetry}>Retry</button></div> : null}
-				{preview.status === "ready" ? <PosterOnlyPreviewGrid items={items} limit={10} className="franchise-preview-grid studio-preview-grid decades-preview-grid" ariaLabel={`${activeMedia} poster preview`} altPrefix={activeMedia} emptyMessage="No posters available." /> : null}
-			</div>
+			<SourcePreviewContent>
+				<div className="studio-preview-tabs decades-preview-source-selector" role="tablist" aria-label="Preview source">{preview.group.choices.map((choice) => <button key={choice.key} type="button" role="tab" aria-selected={choice.key === preview.choice.key} onClick={() => onChangeChoice(choice)}>{choice.selectorLabel}</button>)}</div>
+				<div className="decades-preview-content">
+					{sampleSelected ? <p className="decades-preview-sample-helper">{preview.choice.helper}</p> : null}
+					<SourcePreviewSelectors groups={sourcePreviewVariantGroups(preview.choice.requests.map((request) => request.draft ?? request.drafts[0]), preview.request.draft ?? preview.request.drafts[0], (draft) => onChangeRequest(resolveDecadesPreviewRequest(preview.choice, { mediaType: draft.editable.mediaType, sortOptionId: sourceDraftSortId(draft) })))} />
+					<p className="studio-preview-single-media">{preview.choice.label} · {sourcePreviewContext(preview.request.draft ?? preview.request.drafts[0])}</p>
+					{preview.status === "loading" ? <p className="studio-preview-state" role="status">Preparing {activeMedia.toLowerCase()} preview…</p> : null}
+					{preview.status === "error" ? <div className="studio-preview-state add-source-request-state" role="alert"><p>{preview.error?.message ?? "This Decade preview could not be prepared."}</p><button type="button" onClick={onRetry}>Retry</button></div> : null}
+					{preview.status === "ready" ? <PosterOnlyPreviewGrid items={items} limit={10} className="franchise-preview-grid studio-preview-grid decades-preview-grid" ariaLabel={`${activeMedia} poster preview`} altPrefix={activeMedia} emptyMessage="No posters available." /> : null}
+				</div>
+			</SourcePreviewContent>
 		</NestedPreviewDialog>
 	);
 }
@@ -493,7 +500,7 @@ export function DecadesOptionsStep({ state, headingRef, previewGroups = [], prev
 			<SelectedDecadesSummary selectedDecadeIds={state.selectedDecadeIds} onRemove={onRemoveDecade} />
 			<p className="decades-defaults-note">Recommended content defaults are selected. Continue as-is or adjust them below.</p>
 			<SemanticSortChoices options={DECADES_MEDIA_MODES} selectedId={state.mediaMode} name="decades-media" legend="Media" onChange={(mediaMode) => onStateChange(updateDecadesCreationMedia(state, mediaMode))} />
-			<SemanticSortChoices options={DECADES_SORT_OPTIONS} selectedId={state.sortOptionId} name="decades-sort" legend="Sort titles by" onChange={(sortOptionId) => onStateChange(Object.freeze({ ...state, sortOptionId }))} />
+			<SemanticSortChoices options={DECADES_SORT_OPTIONS} selectedIds={state.sortOptionIds} helper="Choose one or more options. Movies and Series get separate sources." name="decades-sort" validationMessageId="decades-sort-error" legend="Sources to create" onChange={(sortOptionIds) => onStateChange(Object.freeze({ ...state, sortOptionIds }))} />
 			{state.scope === "new-collection" && state.mediaMode === "both" ? (
 				<ChoiceCards legend="Collection structure" name="decades-layout" options={DECADES_COLLECTION_LAYOUTS.map((option) => ({ ...option, description: option.id === "separate-media-collections" ? "Create Movie Decades and TV Decades separately." : "Put Movie and Series folders in one Decades collection.", preview: <StructurePreview mode={option.id} /> }))} selectedId={state.layout} onChange={(layout) => onStateChange(Object.freeze({ ...state, layout, collectionTitles: Object.freeze({}) }))} />
 			) : null}
@@ -643,7 +650,7 @@ function DecadesFlow({ project, projectRevision, scope, currentYear, destination
 			({ signal }) => choice.kind === "representative-sample"
 				? previewProvider.getDecadeSample(request.drafts, { signal })
 				: previewProvider.getDecadePreview(request.draft, { signal }),
-			`${choice.key}|${request.mediaType}`,
+			`${choice.key}|${request.mediaType}|${request.sortOptionId}|${(request.drafts ?? [request.draft]).map(sourcePreviewVariantKey).join("|")}`,
 		);
 		if (!outcome.accepted) return;
 		if (outcome.result?.ok) setPreview({ status: "ready", group, choice, request, data: outcome.result.data, error: null });
@@ -725,7 +732,7 @@ function DecadesFlow({ project, projectRevision, scope, currentYear, destination
 					{state.step === DECADES_CREATION_STEPS.PRESETS ? <DecadePresetStep state={state} headingRef={headingRef} onToggle={(id) => { setState((current) => toggleDecadePreset(current, id)); setApplyDiagnostic(null); }} onSelectAll={() => { setState(selectAllDecadePresets); setApplyDiagnostic(null); }} onClearAll={() => { setState(clearAllDecadePresets); setApplyDiagnostic(null); }} /> : null}
 					{state.step === DECADES_CREATION_STEPS.OPTIONS ? <DecadesOptionsStep state={state} headingRef={headingRef} previewGroups={previewGroupsResult.groups} previewAvailable={previewAvailable} onPreview={openPreview} onRemoveDecade={(id) => { setState((current) => toggleDecadePreset(current, id)); setApplyDiagnostic(null); }} onOpenSecondary={openSecondary} onStateChange={(next) => { setState(next); setApplyDiagnostic(null); }} /> : null}
 					{state.step === DECADES_CREATION_STEPS.REVIEW ? <DecadesReviewStep state={state} planResult={planResult} headingRef={headingRef} applyDiagnostic={applyDiagnostic} onStateChange={(next) => { setState(next); setApplyDiagnostic(null); }} onCollectionTitleChange={(role, title) => { setState((current) => Object.freeze({ ...current, collectionTitles: Object.freeze({ ...current.collectionTitles, [role]: title }) })); setApplyDiagnostic(null); }} /> : null}
-					{state.step === DECADES_CREATION_STEPS.OPTIONS && optionErrors.length > 0 ? <ul className="genre-advanced-errors" role="alert">{optionErrors.map((entry) => <li key={`${entry.code}-${entry.path}`}>{entry.message}</li>)}</ul> : null}
+					{state.step === DECADES_CREATION_STEPS.OPTIONS && optionErrors.length > 0 ? <ul className="genre-advanced-errors" role="alert">{optionErrors.map((entry) => <li id={entry.code === "INVALID_DECADES_SORT" ? "decades-sort-error" : undefined} key={`${entry.code}-${entry.path}`}>{entry.message}</li>)}</ul> : null}
 				</div>
 				{secondarySurface ? <div className="genre-secondary-surface" data-surface={secondarySurface} onKeyDown={(event) => {
 					if (event.key !== "Escape") return;
@@ -743,7 +750,7 @@ function DecadesFlow({ project, projectRevision, scope, currentYear, destination
 					<button className="editor-apply" type="submit" disabled={primaryDisabled}>{primaryLabel}</button>
 				</footer> : null}
 			</form>
-			{preview ? <DecadesTitlePreview preview={preview} onChangeChoice={(choice) => loadPreview(preview.group, choice, choice.requests.find((request) => request.mediaType === preview.request.mediaType) ?? choice.requests[0])} onChangeRequest={(request) => loadPreview(preview.group, preview.choice, request)} onClose={closePreview} onRetry={() => loadPreview(preview.group, preview.choice, preview.request)} /> : null}
+			{preview ? <DecadesTitlePreview preview={preview} onChangeChoice={(choice) => loadPreview(preview.group, choice, resolveDecadesPreviewRequest(choice, preview.request))} onChangeRequest={(request) => loadPreview(preview.group, preview.choice, request)} onClose={closePreview} onRetry={() => loadPreview(preview.group, preview.choice, preview.request)} /> : null}
 		</>
 	);
 }

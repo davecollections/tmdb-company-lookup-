@@ -90,7 +90,7 @@ function sourceCount(person, countKey, loading) {
 	const count = person?.counts?.[countKey];
 	if (Number.isSafeInteger(count) && count > 0) return { text: `${count} title${count === 1 ? "" : "s"}`, compactText: String(count), state: "ready" };
 	if (count === 0) return { text: "No titles found", compactText: "0", state: "zero" };
-	return { text: "Count unavailable", compactText: "—", state: "unavailable" };
+	return { text: "Count unavailable", compactText: "-", state: "unavailable" };
 }
 
 export function requestSelectedPersonDetails({ coordinator, provider, result, bypassCache = false }) {

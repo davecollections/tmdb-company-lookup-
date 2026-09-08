@@ -8,6 +8,7 @@ import {
 import { compileGenreAdvancedFilters, emptyGenreAdvancedState } from "./genre-advanced.js";
 import { GENRE_CONCEPTS, OFFICIAL_GENRE_REFERENCES, officialGenreConcept } from "./genre-catalogue.js";
 import { buildGenreFolderEditable } from "./genre-folder-artwork.js";
+import { orderedSourceSortIds, sourceSortLabel, sourceSortSelectionError } from "./source-sort-variants.js";
 
 export const GENRE_MEDIA_CHOICES = Object.freeze([
 	Object.freeze({ id: "movies", label: "Movies", mediaTypes: Object.freeze(["MOVIE"]) }),
@@ -22,7 +23,7 @@ export const GENRE_DESTINATION_MODES = Object.freeze([
 
 export const GENRE_SORT_OPTIONS = Object.freeze(DISCOVER_SORT_OPTIONS.map((option) => Object.freeze({
 	id: option.id,
-	label: option.label === "Top rated" ? "Top Rated" : option.label === "Most voted" ? "Most Votes" : option.label,
+	label: option.label,
 	description: option.id === "popular"
 		? "Popular titles first."
 		: option.id === "recent"
@@ -118,6 +119,7 @@ function mediaTypesFor(concept, sharedMediaChoice) {
 export function buildGenreSourceDrafts(genres, {
 	sharedMediaChoice = DEFAULT_SHARED_GENRE_MEDIA_CHOICE,
 	sortOptionId = DEFAULT_GENRE_SORT_OPTION_ID,
+	sortOptionIds,
 	advanced = emptyGenreAdvancedState(),
 	titleMode = GENRE_SOURCE_TITLE_MODES.ADD_SOURCE,
 } = {}) {
@@ -125,13 +127,15 @@ export function buildGenreSourceDrafts(genres, {
 	const errors = [];
 	if (concepts === null) errors.push(diagnostic("INVALID_GENRE_SELECTION", "$genres.selection", "Choose at least one official Genre without repeats."));
 	if (!GENRE_MEDIA_CHOICES.some((entry) => entry.id === sharedMediaChoice)) errors.push(diagnostic("INVALID_GENRE_MEDIA", "$genres.sharedMediaChoice", "Choose an available media option for Genres available as both Movies and Series."));
-	if (!GENRE_SORT_OPTIONS.some((option) => option.id === sortOptionId)) errors.push(diagnostic("INVALID_GENRE_SORT", "$genres.sortOptionId", "Choose a supported Genre sort order."));
+	const sorts = orderedSourceSortIds(sortOptionIds, sortOptionId);
+	if (sorts === null) errors.push(diagnostic("INVALID_GENRE_SORT", "$genres.sortOptionId", sourceSortSelectionError(sortOptionIds, "Choose a supported Genre sort order.")));
 	if (!Object.values(GENRE_SOURCE_TITLE_MODES).includes(titleMode)) errors.push(diagnostic("INVALID_GENRE_TITLE_MODE", "$genres.titleMode", "Choose a supported Genre source naming mode."));
 	if (errors.length > 0) return Object.freeze({ ok: false, drafts: Object.freeze([]), errors: Object.freeze(errors) });
 
 	const drafts = [];
 	for (const concept of concepts) {
 		const mediaTypes = mediaTypesFor(concept, sharedMediaChoice);
+		for (const sort of sorts) {
 		for (const mediaType of mediaTypes ?? []) {
 			const tmdbId = mediaType === "MOVIE" ? concept.movieId : concept.tvId;
 			const compiled = compileGenreAdvancedFilters(advanced, {
@@ -145,13 +149,14 @@ export function buildGenreSourceDrafts(genres, {
 				continue;
 			}
 			const built = buildDiscoverSourceDraft({
-				title: genreSourceTitle(concept.name, mediaType, titleMode),
+				title: `${genreSourceTitle(concept.name, mediaType, titleMode)}${sorts.length > 1 ? ` - ${sourceSortLabel(sort)}` : ""}`,
 				mediaType,
-				sortOptionId,
+				sortOptionId: sort,
 				filters: { withGenres: String(tmdbId), ...compiled.filters },
 			});
 			if (!built.ok) errors.push(...built.errors);
 			else drafts.push(Object.freeze(built.draft));
+		}
 		}
 	}
 	return Object.freeze({
@@ -190,14 +195,15 @@ export function validateGenreSourceDrafts(drafts, options = {}) {
 export function groupGenreSourceDrafts(genres, drafts, sharedMediaChoice = DEFAULT_SHARED_GENRE_MEDIA_CHOICE) {
 	const concepts = canonicalConcepts(genres);
 	if (concepts === null || !Array.isArray(drafts)) return Object.freeze([]);
-	let offset = 0;
+	let count = 0;
 	const groups = concepts.map((concept) => {
-		const count = mediaTypesFor(concept, sharedMediaChoice)?.length ?? 0;
-		const groupDrafts = drafts.slice(offset, offset + count);
-		offset += count;
+		const mediaTypes = mediaTypesFor(concept, sharedMediaChoice) ?? [];
+		const groupDrafts = drafts.filter((draft) => mediaTypes.includes(draft.editable.mediaType)
+			&& draft.editable.filters.withGenres === String(draft.editable.mediaType === "MOVIE" ? concept.movieId : concept.tvId));
+		count += groupDrafts.length;
 		return Object.freeze({ concept, drafts: Object.freeze(groupDrafts) });
 	});
-	return offset === drafts.length ? Object.freeze(groups) : Object.freeze([]);
+	return count === drafts.length ? Object.freeze(groups) : Object.freeze([]);
 }
 
 function sourceOccurrences(project, selectedIdentities) {
@@ -295,13 +301,14 @@ export function createGenreSourceBundle(controller, {
 	genres,
 	sharedMediaChoice = DEFAULT_SHARED_GENRE_MEDIA_CHOICE,
 	sortOptionId = DEFAULT_GENRE_SORT_OPTION_ID,
+	sortOptionIds,
 	advanced = emptyGenreAdvancedState(),
 	destinationMode = DEFAULT_GENRE_DESTINATION_MODE,
 	drafts,
 	duplicateOverrideIdentity = null,
 	interactionLocked = false,
 } = {}) {
-	const options = { genres, sharedMediaChoice, sortOptionId, advanced };
+	const options = { genres, sharedMediaChoice, sortOptionId, sortOptionIds, advanced };
 	const validation = validateGenreSourceDrafts(drafts, options);
 	if (!validation.ok) return { ok: false, errors: validation.errors, warnings: [] };
 	if (!GENRE_DESTINATION_MODES.some((entry) => entry.id === destinationMode)) return { ok: false, errors: [diagnostic("INVALID_GENRE_DESTINATION", "$genres.destination", "Choose where the Genre sources should be added.")], warnings: [] };

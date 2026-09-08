@@ -126,11 +126,11 @@ test("the Region step uses plain user-facing copy while preserving the shared re
 	assert.match(sourceFlow, />A–Z</);
 });
 
-test("Configure and Review carry compact run-level Region, Media, Services, Sort, and Grouping context", () => {
+test("Configure and Review carry compact run-level Region, Media, Services, Selected, and Grouping context", () => {
 	assert.match(flow, /function StreamingRunSummary/);
 	assert.match(flow, /<StreamingRunSummary regions=\{regions\} mediaChoice=\{mediaChoice\}/);
 	assert.match(flow, /aria-label=\{review \? "Streaming configuration summary" : "Streaming run context"\}/);
-	for (const label of ["Regions", "Media", "Services", "Sort", "Grouping"]) assert.ok(flow.includes(`<strong>${label}</strong>`), label);
+	for (const label of ["Regions", "Media", "Services", "Selected", "Grouping"]) assert.ok(flow.includes(`<strong>${label}</strong>`), label);
 	assert.match(flow, /regions\.length <= 3/);
 	assert.match(flow, /regions\.length} regions selected/);
 	assert.match(flow, /providers\.length <= 5/);
@@ -141,14 +141,15 @@ test("Configure and Review carry compact run-level Region, Media, Services, Sort
 
 test("run summaries render direct small context and disclosure-backed large Region and service selections", () => {
 	const smallProviders = [provider(1), provider(2)];
-	const small = renderToStaticMarkup(createElement(StreamingRunSummary, { regions: [{ code: "AU", name: "Australia" }, { code: "US", name: "United States" }], mediaChoice: "both", providers: smallProviders, sortOptionId: "popular", groupingMode: "group-by-service", review: true }));
+	const small = renderToStaticMarkup(createElement(StreamingRunSummary, { regions: [{ code: "AU", name: "Australia" }, { code: "US", name: "United States" }], mediaChoice: "both", providers: smallProviders, sortOptionIds: ["popular"], groupingMode: "group-by-service", review: true }));
 	assert.match(small, /Australia \(AU\), United States \(US\)/);
 	assert.match(small, /Service 001, Service 002/);
 	assert.doesNotMatch(small, /services selected|View selected services/);
 
 	const largeProviders = Array.from({ length: 12 }, (_, index) => provider(index + 1));
 	const largeRegions = Array.from({ length: 6 }, (_, index) => ({ code: `A${index}`, name: `Region ${index + 1}` }));
-	const large = renderToStaticMarkup(createElement(StreamingRunSummary, { regions: largeRegions, mediaChoice: "movies", providers: largeProviders, sortOptionId: "popular", groupingMode: "separate-by-region", review: true }));
+	assert.ok(small.includes("<strong>Selected</strong>"));
+	const large = renderToStaticMarkup(createElement(StreamingRunSummary, { regions: largeRegions, mediaChoice: "movies", providers: largeProviders, sortOptionIds: ["popular"], groupingMode: "separate-by-region", review: true }));
 	assert.match(large, /6 regions selected/);
 	assert.match(large, /12 services selected/);
 	assert.match(large, /View selected services/);
@@ -393,9 +394,9 @@ test("Preview is exact, lazy, conditional, bounded, cache-backed, focus-safe, an
 	assert.match(flow, /onClick=\{\(event\) => onPreview\(provider, event\.currentTarget\)\}/);
 	assert.doesNotMatch(flow, /prefetch|Promise\.all\([^)]*getStreamingPreview/iu);
 	assert.match(flow, /regions\.length > 1 \?/);
-	assert.match(flow, /mediaTypes\.length > 1 \?/);
+	assert.match(flow, /sourcePreviewVariantGroups\(preview\.drafts/);
 	assert.match(flow, /role="tablist" aria-label="Preview region"/);
-	assert.match(flow, /role="tablist" aria-label="Preview media"/);
+	assert.match(flow, /<SourcePreviewSelectors/);
 	assert.match(flow, /<PosterOnlyPreviewGrid[^>]+limit=\{10\}/);
 	assert.match(flow, /previewCoordinatorRef\.current\.cancel/);
 	assert.match(flow, /queueMicrotask\(\(\) => focusElementWithoutScroll\(trigger\)\)/);

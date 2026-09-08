@@ -1819,6 +1819,7 @@ export function BuilderWorkspace({
 			catalogueRegions: bundle.catalogueRegions,
 			mediaChoice: bundle.mediaChoice,
 			sortOptionId: bundle.sortOptionId,
+			sortOptionIds: bundle.sortOptionIds,
 			drafts: bundle.drafts,
 			duplicateOverrideIdentity: bundle.duplicateOverrideIdentity,
 			interactionLocked: (
@@ -1857,6 +1858,7 @@ export function BuilderWorkspace({
 			genres: bundle.genres,
 			sharedMediaChoice: bundle.sharedMediaChoice,
 			sortOptionId: bundle.sortOptionId,
+			sortOptionIds: bundle.sortOptionIds,
 			advanced: bundle.advanced,
 			destinationMode: bundle.destinationMode,
 			drafts: bundle.drafts,
@@ -1893,6 +1895,7 @@ export function BuilderWorkspace({
 			mediaMode: bundle.mediaMode,
 			genreNames: bundle.genreNames,
 			sortOptionId: bundle.sortOptionId,
+			sortOptionIds: bundle.sortOptionIds,
 			advanced: bundle.advanced,
 			drafts: bundle.drafts,
 			duplicateOverrideIdentity: bundle.duplicateOverrideIdentity,

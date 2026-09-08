@@ -413,6 +413,7 @@ export async function connectDevTools(
 	});
 
 	let nextId = 0;
+	const eventListeners = new Set();
 	let closed = false;
 	const pending = new Map();
 	let resolveClosed;
@@ -439,7 +440,11 @@ export async function connectDevTools(
 			rejectPending(`Chrome DevTools returned invalid JSON: ${asError(error).message}`);
 			return;
 		}
-		if (!message.id || !pending.has(message.id)) return;
+		if (!message.id) {
+			for (const listener of eventListeners) listener(message);
+			return;
+		}
+		if (!pending.has(message.id)) return;
 		if (message.error) settlePending(message.id, "reject", new Error(message.error.message));
 		else settlePending(message.id, "resolve", message.result);
 	});
@@ -452,6 +457,7 @@ export async function connectDevTools(
 
 	return {
 		closed: closedPromise,
+		onEvent(listener) { eventListeners.add(listener); return () => eventListeners.delete(listener); },
 		isClosed: () => closed,
 		close() {
 			if (!closed && socket.readyState < 2) socket.close();

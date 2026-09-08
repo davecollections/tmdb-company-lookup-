@@ -1,4 +1,37 @@
 import { buildPeopleTitlePreview, PEOPLE_SOURCE_COMBINATIONS, peopleSortOptionId } from "./person-source.js";
+import { DISCOVER_SORT_OPTIONS, discoverSourceIdentity } from "../nuvio/discover.js";
+import { sourceDraftSortId, sourceSortLabel } from "./source-sort-variants.js";
+
+export function sourcePreviewVariantKey(draft) {
+	return discoverSourceIdentity(draft?.editable).key;
+}
+
+export function resolveSourcePreviewDraft(drafts, { mediaType, sortOptionId } = {}) {
+	const sort = drafts.some((draft) => sourceDraftSortId(draft) === sortOptionId) ? sortOptionId : sourceDraftSortId(drafts[0]);
+	const variants = drafts.filter((draft) => sourceDraftSortId(draft) === sort);
+	return variants.find((draft) => draft.editable.mediaType === mediaType) ?? variants[0] ?? null;
+}
+
+export function sourcePreviewContext(draft) {
+	return `${sourceSortLabel(sourceDraftSortId(draft))} ${draft?.editable?.mediaType === "TV" ? "Series" : "Movies"}`;
+}
+
+export function sourcePreviewVariantGroups(drafts, activeDraft, onSelect) {
+	const activeSort = sourceDraftSortId(activeDraft);
+	const activeMedia = activeDraft?.editable?.mediaType;
+	const sorts = DISCOVER_SORT_OPTIONS.filter((option) => drafts.some((draft) => sourceDraftSortId(draft) === option.id));
+	const media = ["MOVIE", "TV"].filter((mediaType) => drafts.some((draft) => draft.editable.mediaType === mediaType));
+	return [
+		...(media.length > 1 ? [{ id: "media", label: "Media", ariaLabel: "Preview media", options: media.map((mediaType) => ({
+			id: mediaType, label: mediaType === "TV" ? "Series" : "Movies", selected: activeMedia === mediaType,
+			onSelect: () => onSelect(resolveSourcePreviewDraft(drafts, { mediaType, sortOptionId: activeSort })),
+		})) }] : []),
+		...(sorts.length > 1 ? [{ id: "sort", label: "Show", ariaLabel: "Preview show", options: sorts.map((option) => ({
+			id: option.id, label: option.label, selected: activeSort === option.id,
+			onSelect: () => onSelect(resolveSourcePreviewDraft(drafts, { mediaType: activeMedia, sortOptionId: option.id })),
+		})) }] : []),
+	];
+}
 
 function failure(message) {
 	return Object.freeze({

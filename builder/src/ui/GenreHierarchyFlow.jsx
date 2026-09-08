@@ -38,6 +38,9 @@ import { PosterOnlyPreviewGrid } from "./PosterOnlyPreviewGrid.jsx";
 import { FolderShapeChoices, HiddenTitleFieldHelp, PresentationSwitch, TitleOptions } from "./PresentationControls.jsx";
 import { RemovableSelectionSummary } from "./RemovableSelectionSummary.jsx";
 import { SemanticSortChoices } from "./SemanticSortChoices.jsx";
+import { SourcePreviewSelectors, SourcePreviewContent } from "./SourceTitlePreviewDialog.jsx";
+import { sourcePreviewVariantGroups, sourcePreviewVariantKey, sourcePreviewContext } from "../source-add/source-title-preview.js";
+import { sourceSortLabel } from "../source-add/source-sort-variants.js";
 import { SourceElsewhereNotice } from "./SourceElsewhereNotice.jsx";
 
 const usePrePaintLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
@@ -87,12 +90,6 @@ function formatCount(value) {
 	return Number.isSafeInteger(value) && value >= 0 ? value.toLocaleString("en") : null;
 }
 
-function previewCountLabel(draft, conceptName, knownPreviewCounts) {
-	const label = mediaLabel(draft.editable.mediaType);
-	const count = formatCount(knownPreviewCounts[`${conceptName}|${draft.editable.mediaType}`]);
-	return count === null ? label : `${label} · ${count}`;
-}
-
 function fixedMediaNotice(genres, sharedMediaChoice) {
 	const affected = sharedMediaChoice === "movies"
 		? genres.filter((concept) => concept.movieId === null)
@@ -113,12 +110,15 @@ function GenreTitlePreview({ preview, knownPreviewCounts, onChangeDraft, onClose
 	const activeLabel = mediaLabel(preview.draft.editable.mediaType);
 	const items = preview.data?.results ?? [];
 	return (
-		<NestedPreviewDialog ariaLabelledBy="genre-preview-title" backdropClassName="franchise-preview-backdrop studio-preview-backdrop genre-preview-backdrop" backdropProps={{ "data-genre-preview-backdrop": "true" }} dialogClassName="franchise-preview-modal studio-preview-modal genre-preview-modal" dialogRef={dialogRef} initialFocusRef={closeRef} onClose={onClose}>
+		<NestedPreviewDialog ariaLabelledBy="genre-preview-title" backdropClassName="franchise-preview-backdrop studio-preview-backdrop genre-preview-backdrop" backdropProps={{ "data-genre-preview-backdrop": "true" }} dialogClassName="franchise-preview-modal studio-preview-modal genre-preview-modal source-sort-preview-modal" dialogRef={dialogRef} initialFocusRef={closeRef} onClose={onClose}>
 			<header><div><p className="panel-kicker">Title preview</p><h3 id="genre-preview-title">{preview.group.concept.name}</h3></div><button ref={closeRef} type="button" onClick={onClose}>Close</button></header>
-			{preview.group.drafts.length > 1 ? <div className="studio-preview-tabs genre-preview-tabs" role="tablist" aria-label="Preview media">{preview.group.drafts.map((draft) => <button key={draft.editable.mediaType} type="button" role="tab" aria-selected={preview.draft.editable.mediaType === draft.editable.mediaType} onClick={() => onChangeDraft(draft)}>{previewCountLabel(draft, preview.group.concept.name, knownPreviewCounts)}</button>)}</div> : <p className="studio-preview-single-media">{previewCountLabel(preview.draft, preview.group.concept.name, knownPreviewCounts)}</p>}
-			{preview.status === "loading" ? <p className="studio-preview-state" role="status">Preparing {activeLabel.toLowerCase()} preview…</p> : null}
-			{preview.status === "error" ? <div className="studio-preview-state add-source-request-state" role="alert"><p>{preview.error?.message ?? "This Genre preview could not be prepared."}</p><button type="button" onClick={onRetry}>Retry</button></div> : null}
-			{preview.status === "ready" ? <PosterOnlyPreviewGrid items={items} limit={10} className="franchise-preview-grid studio-preview-grid genre-preview-grid" ariaLabel={`${activeLabel} poster preview`} altPrefix={activeLabel} emptyMessage="No posters available." /> : null}
+			<SourcePreviewContent>
+				<SourcePreviewSelectors groups={sourcePreviewVariantGroups(preview.group.drafts, preview.draft, onChangeDraft)} />
+				<p className="studio-preview-single-media">{sourcePreviewContext(preview.draft)}{preview.status === "ready" && formatCount(preview.data?.totalResults) !== null ? ` · ${formatCount(preview.data.totalResults)}` : ""}</p>
+				{preview.status === "loading" ? <p className="studio-preview-state" role="status">Preparing {activeLabel.toLowerCase()} preview…</p> : null}
+				{preview.status === "error" ? <div className="studio-preview-state add-source-request-state" role="alert"><p>{preview.error?.message ?? "This Genre preview could not be prepared."}</p><button type="button" onClick={onRetry}>Retry</button></div> : null}
+				{preview.status === "ready" ? <PosterOnlyPreviewGrid items={items} limit={10} className="franchise-preview-grid studio-preview-grid genre-preview-grid" ariaLabel={`${activeLabel} poster preview`} altPrefix={activeLabel} emptyMessage="No posters available." /> : null}
+			</SourcePreviewContent>
 		</NestedPreviewDialog>
 	);
 }
@@ -138,7 +138,7 @@ function ConfigureStep({
 	scope,
 	genres,
 	sharedMediaChoice,
-	sortOptionId,
+	sortOptionIds,
 	advanced,
 	built,
 	folderPlan,
@@ -154,7 +154,7 @@ function ConfigureStep({
 	const creatable = scope === "new-folder" ? folderPlan.readyGroups : folderPlan.groups;
 	const sourceCount = creatable.reduce((count, group) => count + group.drafts.length, 0);
 	const omittedCount = folderPlan.groups.length - creatable.length;
-	const sortLabel = GENRE_SORT_OPTIONS.find((option) => option.id === sortOptionId)?.label ?? sortOptionId;
+	const sortLabel = (sortOptionIds ?? []).map(sourceSortLabel).join(", ");
 	const mediaNotice = fixedMediaNotice(genres, sharedMediaChoice);
 	return (
 		<section className="genre-hierarchy-configure" aria-labelledby="genre-hierarchy-configure-title">
@@ -162,11 +162,11 @@ function ConfigureStep({
 			<section className="genre-hierarchy-configuration-surface" aria-labelledby="genre-hierarchy-content-settings-title">
 				<div><p className="panel-kicker">Shared content settings</p><h4 id="genre-hierarchy-content-settings-title">Configure every selected Genre</h4><p>These settings are applied to the configured Genre sources below.</p></div>
 				{hasShared ? <div className="genre-hierarchy-configuration-control"><SemanticSortChoices options={GENRE_MEDIA_CHOICES} selectedId={sharedMediaChoice} name="genre-hierarchy-media" legend="Media" helper="Applies to Genres available in both Movies and Series." onChange={onSharedMediaChange} />{mediaNotice ? <p className="genre-fixed-media-note" role="status">{mediaNotice}</p> : null}</div> : null}
-				<div className="genre-hierarchy-configuration-control"><SemanticSortChoices options={GENRE_SORT_OPTIONS} selectedId={sortOptionId} name="genre-hierarchy-sort" legend="Sort titles by" onChange={onSortChange} /></div>
+				<div className="genre-hierarchy-configuration-control"><SemanticSortChoices options={GENRE_SORT_OPTIONS} selectedIds={sortOptionIds} helper="Choose one or more options. Movies and Series get separate sources." name="genre-hierarchy-sort" validationMessageId="genre-hierarchy-sort-error" legend="Sources to create" onChange={onSortChange} /></div>
 			</section>
 			<GenreAdvancedOptions idPrefix="genre-hierarchy-advanced" value={advanced} includedGenres={genres} sharedMediaChoice={sharedMediaChoice} onChange={onAdvancedChange} onOpenSecondary={onOpenSecondary} />
-			<div className="genre-hierarchy-configuration-summary"><strong>{creatable.length} configured Genre{creatable.length === 1 ? "" : "s"} · {sourceCount} source{sourceCount === 1 ? "" : "s"}</strong><span>Sort: {sortLabel} · Advanced: {genreAdvancedOptionIsEmpty(advanced) ? "Not configured" : "Configured"}{omittedCount ? ` · ${omittedCount} destination match${omittedCount === 1 ? "" : "es"}` : ""}</span></div>
-			{built.errors.length ? <ul className="genre-advanced-errors" role="alert">{built.errors.map((error) => <li key={`${error.code}-${error.path}-${error.message}`}>{error.message}</li>)}</ul> : null}
+			<div className="genre-hierarchy-configuration-summary"><strong>{creatable.length} configured Genre{creatable.length === 1 ? "" : "s"} · {sourceCount} source{sourceCount === 1 ? "" : "s"}</strong><span>Selected: {sortLabel} · Advanced: {genreAdvancedOptionIsEmpty(advanced) ? "Not configured" : "Configured"}{omittedCount ? ` · ${omittedCount} destination match${omittedCount === 1 ? "" : "es"}` : ""}</span></div>
+			{built.errors.length ? <ul className="genre-advanced-errors" role="alert">{built.errors.map((error) => <li id={error.code === "INVALID_GENRE_SORT" ? "genre-hierarchy-sort-error" : undefined} key={`${error.code}-${error.path}-${error.message}`}>{error.message}</li>)}</ul> : null}
 			<section className="genre-hierarchy-configured-genres" aria-labelledby="genre-hierarchy-configured-title">
 				<div className="add-source-section-heading"><div><h4 id="genre-hierarchy-configured-title">Configured Genres · {genres.length}</h4></div></div>
 				{folderPlan.groups.length ? <div className="genre-hierarchy-configure-list">{folderPlan.groups.map((group) => <GenreConfigureRow key={group.concept.name} group={group} onPreview={onPreview} onRemove={onRemove} />)}</div> : <p className="studio-configure-empty">No valid Genres are currently configured.</p>}
@@ -301,7 +301,7 @@ export function GenreHierarchyFlow({
 	const [query, setQuery] = useState("");
 	const [selection, setSelection] = useState([]);
 	const [sharedMediaChoice, setSharedMediaChoice] = useState(DEFAULT_SHARED_GENRE_MEDIA_CHOICE);
-	const [sortOptionId, setSortOptionId] = useState(DEFAULT_GENRE_SORT_OPTION_ID);
+	const [sortOptionIds, setSortOptionIds] = useState([DEFAULT_GENRE_SORT_OPTION_ID]);
 	const [advanced, setAdvanced] = useState(emptyGenreAdvancedState);
 	const [options, setOptions] = useState(() => Object.freeze({
 		structure: DEFAULT_GENRE_HIERARCHY_STRUCTURE,
@@ -334,7 +334,7 @@ export function GenreHierarchyFlow({
 	const scrollByStepRef = useRef({ select: 0, configure: 0, structure: 0, appearance: 0 });
 	if (previewCoordinatorRef.current === null) previewCoordinatorRef.current = createAsyncRequestCoordinator();
 	const genres = useMemo(() => selection.map((name) => officialGenreConcept(name)).filter(Boolean), [selection]);
-	const built = useMemo(() => buildGenreSourceDrafts(genres, { sharedMediaChoice, sortOptionId, advanced, titleMode: GENRE_SOURCE_TITLE_MODES.HIERARCHY }), [advanced, genres, sharedMediaChoice, sortOptionId]);
+	const built = useMemo(() => buildGenreSourceDrafts(genres, { sharedMediaChoice, sortOptionIds, advanced, titleMode: GENRE_SOURCE_TITLE_MODES.HIERARCHY }), [advanced, genres, sharedMediaChoice, sortOptionIds]);
 	const folderPlan = useMemo(() => built.ok ? inspectGenreFolderPlan(project, scope === "new-folder" ? destinationCollectionInternalId : null, genres, built.drafts, sharedMediaChoice) : Object.freeze({ groups: Object.freeze([]), readyGroups: Object.freeze([]), alreadyExistingGroups: Object.freeze([]), partialGroups: Object.freeze([]), elsewhere: Object.freeze([]) }), [built, destinationCollectionInternalId, genres, project, scope, sharedMediaChoice]);
 	const compositeChoices = useMemo(() => built.ok ? genreCompositePlacementChoices(project, {
 		scope,
@@ -374,12 +374,12 @@ export function GenreHierarchyFlow({
 				...(structure === "genre-folders" ? { compositePlacements: effectiveCompositePlacements } : {}),
 				genres: selection,
 				sharedMediaChoice,
-				sortOptionId,
+				sortOptionIds,
 				advanced,
 			}));
 		}
 		return plans;
-	}, [advanced, built, destinationCollectionInternalId, effectiveCompositePlacements, options, project, projectRevision, scope, selection, sharedMediaChoice, sortOptionId]);
+	}, [advanced, built, destinationCollectionInternalId, effectiveCompositePlacements, options, project, projectRevision, scope, selection, sharedMediaChoice, sortOptionIds]);
 	const planResult = structurePlans.get(options.structure) ?? structurePlans.get(DEFAULT_GENRE_HIERARCHY_STRUCTURE) ?? Object.freeze({ ok: false, plan: null, errors: Object.freeze([]) });
 
 	useEffect(() => () => previewCoordinatorRef.current.cancel({ notify: false }), []);
@@ -430,7 +430,7 @@ export function GenreHierarchyFlow({
 		if (!outcome.accepted || previewTokenRef.current !== token) return;
 		if (outcome.result?.ok) {
 			setPreview({ group, draft, status: "ready", data: outcome.result.data, error: null });
-			setKnownPreviewCounts((current) => Object.freeze({ ...current, [`${group.concept.name}|${draft.editable.mediaType}`]: outcome.result.data.totalResults }));
+			setKnownPreviewCounts((current) => Object.freeze({ ...current, [sourcePreviewVariantKey(draft)]: outcome.result.data.totalResults }));
 		} else if (outcome.result?.error?.kind !== "aborted") {
 			setPreview({ group, draft, status: "error", data: null, error: outcome.result?.error ?? { message: "This Genre preview could not be prepared." } });
 		}
@@ -509,10 +509,10 @@ export function GenreHierarchyFlow({
 				? planResult.ok && planResult.plan.counts.folderCount > 0 ? "Continue to Appearance" : "No Genre folders ready"
 				: isApplying ? "Creating…" : guidedCreateActionLabel(scope);
 	return <>
-		<CreationHeader title="Create with Genres" context={`${scopeLabel(scope)}${scope === "new-folder" && destinationCollectionTitle ? ` · ${destinationCollectionTitle}` : ""}`} description={step === "select" ? "Select official TMDB Genres in folder order." : step === "configure" ? "Choose media, sort and Advanced settings, then review exact sources." : step === "structure" ? "Choose how Genre sources are grouped in Nuvio." : "Choose presentation settings and create the hierarchy atomically."} onBack={goBack} backAction={step === "select" ? "back-to-creation-launcher" : step === "configure" ? "back-to-genre-hierarchy-selection" : step === "structure" ? "back-to-genre-hierarchy-configuration" : "back-to-genre-hierarchy-structure"} backDisabled={isApplying} inactive={Boolean(secondarySurface || preview)} onClose={onCancel} />
+		<CreationHeader title="Create with Genres" context={`${scopeLabel(scope)}${scope === "new-folder" && destinationCollectionTitle ? ` · ${destinationCollectionTitle}` : ""}`} description={step === "select" ? "Select official TMDB Genres in folder order." : step === "configure" ? "Choose your media, sources and any advanced settings, then review." : step === "structure" ? "Choose how Genre sources are grouped in Nuvio." : "Choose presentation settings and create the hierarchy atomically."} onBack={goBack} backAction={step === "select" ? "back-to-creation-launcher" : step === "configure" ? "back-to-genre-hierarchy-selection" : step === "structure" ? "back-to-genre-hierarchy-configuration" : "back-to-genre-hierarchy-structure"} backDisabled={isApplying} inactive={Boolean(secondarySurface || preview)} onClose={onCancel} />
 		<form className="add-source-form genre-hierarchy-form" data-genre-hierarchy-stage={step} data-secondary-surface={secondarySurface ?? undefined} onSubmit={submit} noValidate onKeyDown={(event) => { if (secondarySurface && event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeSecondary(); } }}>
 			<div ref={scrollRef} className="add-source-scroll" inert={secondarySurface || preview || undefined} aria-hidden={secondarySurface || preview ? "true" : undefined}>
-				{step === "select" ? <SelectStep query={query} selection={selection} genres={genres} headingRef={selectHeadingRef} onQueryChange={(event) => setQuery(event.target.value)} onClearSearch={() => setQuery("")} onChoose={chooseGenre} onSelectAll={() => { const names = GENRE_CONCEPTS.map((concept) => concept.name); setSelection(names); setAdvanced((current) => pruneGenreExclusionConfiguration(current, names)); setKnownPreviewCounts({}); setDiagnostic(null); }} onClearAll={() => { setSelection([]); setAdvanced((current) => pruneGenreExclusionConfiguration(current, [])); setKnownPreviewCounts({}); setDiagnostic(null); }} onRemove={chooseGenre} /> : step === "configure" ? <ConfigureStep scope={scope} genres={genres} sharedMediaChoice={sharedMediaChoice} sortOptionId={sortOptionId} advanced={advanced} built={built} folderPlan={folderPlan} headingRef={configureHeadingRef} onRemove={chooseGenre} onPreview={openPreview} onSharedMediaChange={(value) => { setSharedMediaChoice(value); setKnownPreviewCounts({}); setDiagnostic(null); }} onSortChange={(value) => { setSortOptionId(value); setKnownPreviewCounts({}); setDiagnostic(null); }} onAdvancedChange={(value) => { setAdvanced(value); setKnownPreviewCounts({}); setDiagnostic(null); }} onOpenSecondary={openSecondary} /> : step === "structure" ? <StructureStep structurePlans={structurePlans} compositeChoices={compositeChoices} options={options} headingRef={structureHeadingRef} onStructureChange={(structure) => updateOptions({ structure })} onCompositeChange={(genreName, placement) => updateOptions({ compositePlacements: Object.freeze({ ...options.compositePlacements, [genreName]: placement }) })} /> : <AppearanceStep planResult={planResult} options={options} onOptionsChange={updateOptions} diagnostic={diagnostic} headingRef={appearanceHeadingRef} />}
+				{step === "select" ? <SelectStep query={query} selection={selection} genres={genres} headingRef={selectHeadingRef} onQueryChange={(event) => setQuery(event.target.value)} onClearSearch={() => setQuery("")} onChoose={chooseGenre} onSelectAll={() => { const names = GENRE_CONCEPTS.map((concept) => concept.name); setSelection(names); setAdvanced((current) => pruneGenreExclusionConfiguration(current, names)); setKnownPreviewCounts({}); setDiagnostic(null); }} onClearAll={() => { setSelection([]); setAdvanced((current) => pruneGenreExclusionConfiguration(current, [])); setKnownPreviewCounts({}); setDiagnostic(null); }} onRemove={chooseGenre} /> : step === "configure" ? <ConfigureStep scope={scope} genres={genres} sharedMediaChoice={sharedMediaChoice} sortOptionIds={sortOptionIds} advanced={advanced} built={built} folderPlan={folderPlan} headingRef={configureHeadingRef} onRemove={chooseGenre} onPreview={openPreview} onSharedMediaChange={(value) => { setSharedMediaChoice(value); setKnownPreviewCounts({}); setDiagnostic(null); }} onSortChange={(value) => { setSortOptionIds(value); setKnownPreviewCounts({}); setDiagnostic(null); }} onAdvancedChange={(value) => { setAdvanced(value); setKnownPreviewCounts({}); setDiagnostic(null); }} onOpenSecondary={openSecondary} /> : step === "structure" ? <StructureStep structurePlans={structurePlans} compositeChoices={compositeChoices} options={options} headingRef={structureHeadingRef} onStructureChange={(structure) => updateOptions({ structure })} onCompositeChange={(genreName, placement) => updateOptions({ compositePlacements: Object.freeze({ ...options.compositePlacements, [genreName]: placement }) })} /> : <AppearanceStep planResult={planResult} options={options} onOptionsChange={updateOptions} diagnostic={diagnostic} headingRef={appearanceHeadingRef} />}
 			</div>
 			{secondarySurface ? <div className="genre-secondary-surface" data-surface={secondarySurface}><GenreAdvancedSecondarySurface surface={secondarySurface} value={advanced} includedGenres={genres} sharedMediaChoice={sharedMediaChoice} onChange={(value) => { setAdvanced(value); setKnownPreviewCounts({}); setDiagnostic(null); }} onDone={closeSecondary} focusRef={secondaryHeadingRef} /></div> : null}
 			{!secondarySurface ? <footer className="add-source-actions"><button className="editor-apply" type="submit" disabled={primaryDisabled}>{primaryLabel}</button></footer> : null}

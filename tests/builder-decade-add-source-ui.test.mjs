@@ -79,7 +79,7 @@ test("ordinary Add Source exposes TMDB Lists and singular Decade last in the est
 test("Decade Add Source server markup is one compact canonical editor in the approved order", () => {
 	const markup = renderFlow();
 	const editorMarkup = markup.match(/<section class="decade-source-editor">[\s\S]*?<\/section><\/div><footer/)?.[0] ?? markup;
-	const orderedLabels = ["Media", "Sort titles by", "Decade", "Year", "Genre sources", "Advanced options", "Generated sources", "Preview titles"];
+	const orderedLabels = ["Media", "Sources to create", "Decade", "Year", "Genre sources", "Advanced options", "Generated sources", "Preview titles"];
 	let cursor = -1;
 	for (const label of orderedLabels) {
 		const next = editorMarkup.indexOf(label);
@@ -158,7 +158,7 @@ test("Decade Add Source directly reuses shared sort, Advanced, Preview, duplicat
 	assert.match(flow, /<NestedPreviewDialog/);
 	assert.match(flow, /ariaLabel="Preview year"/);
 	assert.match(flow, /ariaLabel="Preview source"/);
-	assert.match(flow, /ariaLabel="Preview media"/);
+	assert.match(flow, /<SourcePreviewSelectors groups=\{sourcePreviewVariantGroups\(preview\.logicalSource\.drafts, preview\.draft, onChangeDraft\)\}/);
 	assert.doesNotMatch(flow, /preview\.logicalSources\.map/);
 	assert.match(flow, /<PosterOnlyPreviewGrid[^>]*limit=\{10\}/);
 	assert.match(flow, /inspectDecadeSourceDuplicates/);

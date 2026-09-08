@@ -3,6 +3,8 @@ import {
 } from "../nuvio/discover.js";
 import { isInvisibleNuvioTitle, isValidVisibleNuvioTitle, NUVIO_INVISIBLE_TITLE } from "../nuvio/titles.js";
 import { normalizeHierarchyShowAllTab } from "./hierarchy-presentation.js";
+import { orderedSourceSortIds, sourceSortSelectionError } from "./source-sort-variants.js";
+import { discoverSortOptionId } from "../nuvio/discover.js";
 import {
 	hasStreamingCollectionAffinity,
 	hasStreamingSourceEvidence,
@@ -50,6 +52,7 @@ const optionKeys = new Set([
 	"regions",
 	"mediaChoice",
 	"sortOptionId",
+	"sortOptionIds",
 	"providers",
 ]);
 const folderTitleVisibilities = new Set(["SHOW_EVERYWHERE", "HIDE_HOME_SCREEN", "HIDE_EVERYWHERE"]);
@@ -216,6 +219,7 @@ function desiredFolders(providers, regions, configuration, errors) {
 			regionCodes,
 			mediaChoice: configuration.mediaChoice,
 			sortOptionId: configuration.sortOptionId,
+			sortOptionIds: configuration.sortOptionIds,
 			nameContext,
 		});
 		if (!built.ok) {
@@ -283,7 +287,8 @@ function evaluateExistingPlacement(project, destinationCollection, desired, grou
 			&& entry.inspected.regionCode === regionCode
 			&& entry.inspected.mediaType === mediaType
 		));
-		const conflictingEntries = slotEntries.filter((entry) => entry.inspected.value.sortBy !== draft.editable.sortBy);
+		const conflictingEntries = slotEntries.filter((entry) => entry.inspected.value.sortBy !== draft.editable.sortBy
+			&& discoverSortOptionId(entry.inspected.value.sortBy, mediaType) === null);
 		const destination = occurrencesForDraft(duplicateReview, draft, "destination");
 		const elsewhere = occurrencesForDraft(duplicateReview, draft);
 		if (conflictingEntries.length > 0) {
@@ -376,7 +381,8 @@ export function createStreamingHierarchyPlan(project, options) {
 	const mediaChoice = STREAMING_MEDIA_CHOICES.some((choice) => choice.id === options.mediaChoice) ? options.mediaChoice : null;
 	if (mediaChoice === null) errors.push(diagnostic("INVALID_STREAMING_HIERARCHY_MEDIA", "$streamingHierarchy.mediaChoice", "Choose Movies, Series or Both."));
 	const sortOptionId = options.sortOptionId ?? DEFAULT_STREAMING_SORT_OPTION_ID;
-	if (!STREAMING_SORT_OPTIONS.some((option) => option.id === sortOptionId)) errors.push(diagnostic("INVALID_STREAMING_HIERARCHY_SORT", "$streamingHierarchy.sortOptionId", "Choose a supported Streaming sort."));
+	const sorts = orderedSourceSortIds(options.sortOptionIds, sortOptionId);
+	if (sorts === null) errors.push(diagnostic("INVALID_STREAMING_HIERARCHY_SORT", "$streamingHierarchy.sortOptionId", sourceSortSelectionError(options.sortOptionIds, "Choose a supported Streaming sort.")));
 	const groupingMode = options.groupingMode ?? DEFAULT_STREAMING_HIERARCHY_GROUPING_MODE;
 	if (!STREAMING_HIERARCHY_GROUPING_MODES.some((option) => option.id === groupingMode)) errors.push(diagnostic("INVALID_STREAMING_HIERARCHY_GROUPING", "$streamingHierarchy.groupingMode", "Choose a supported Streaming folder grouping."));
 	if (groupingMode === "separate-by-region" && regions.length < 2) errors.push(diagnostic("UNAVAILABLE_STREAMING_HIERARCHY_GROUPING", "$streamingHierarchy.groupingMode", "Separate regional folders are available only when multiple regions are selected."));
@@ -420,6 +426,7 @@ export function createStreamingHierarchyPlan(project, options) {
 		regions,
 		mediaChoice,
 		sortOptionId,
+		...(options.sortOptionIds === undefined ? {} : { sortOptionIds: sorts }),
 		providers,
 	});
 	const desired = desiredFolders(providers, regions, planningConfiguration, errors);
@@ -515,6 +522,7 @@ function existingDestinationOptions(configuration, projectRevision, collectionIn
 		regions: configuration.regions,
 		mediaChoice: configuration.mediaChoice,
 		sortOptionId: configuration.sortOptionId,
+		sortOptionIds: configuration.sortOptionIds,
 		providers: configuration.providers,
 	};
 }
@@ -535,6 +543,7 @@ export function inspectStreamingHierarchyDestinationCandidates(project, options)
 		regions: options.regions,
 		mediaChoice: options.mediaChoice,
 		sortOptionId: options.sortOptionId,
+		sortOptionIds: options.sortOptionIds,
 		providers: options.providers,
 	});
 	if (!probe.ok) return Object.freeze({ ok: false, candidates: Object.freeze([]), errors: probe.errors });
@@ -597,6 +606,7 @@ function rebuildOptions(plan) {
 		regions: plan.configuration.regions,
 		mediaChoice: plan.configuration.mediaChoice,
 		sortOptionId: plan.configuration.sortOptionId,
+		sortOptionIds: plan.configuration.sortOptionIds,
 		providers: plan.configuration.providers,
 	};
 }

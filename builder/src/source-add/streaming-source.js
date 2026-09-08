@@ -7,6 +7,7 @@ import {
 } from "../nuvio/discover.js";
 import { isValidNuvioTitle } from "../nuvio/titles.js";
 import { streamingProviderCommonAvailability } from "./streaming-catalogue.js";
+import { orderedSourceSortIds, sourceDraftSortId, sourceSortLabel, sourceSortSelectionError } from "./source-sort-variants.js";
 
 export const STREAMING_MEDIA_CHOICES = Object.freeze([
 	Object.freeze({ id: "movies", label: "Movies", mediaTypes: Object.freeze(["MOVIE"]) }),
@@ -15,7 +16,7 @@ export const STREAMING_MEDIA_CHOICES = Object.freeze([
 ]);
 export const STREAMING_SORT_OPTIONS = Object.freeze(DISCOVER_SORT_OPTIONS.map((option) => Object.freeze({
 	id: option.id,
-	label: option.label === "Top rated" ? "Top Rated" : option.label === "Most voted" ? "Most Votes" : option.label,
+	label: option.label,
 	description: option.id === "popular"
 		? "Popular titles first."
 		: option.id === "recent"
@@ -57,15 +58,15 @@ function choiceForId(choiceId) {
 	return STREAMING_MEDIA_CHOICES.find((choice) => choice.id === choiceId) ?? null;
 }
 
-export function streamingSourceCandidateKey(regionCode, mediaType) {
+export function streamingSourceCandidateKey(regionCode, mediaType, sortOptionId = null) {
 	const code = canonicalRegionCode(regionCode);
 	return code !== null && ["MOVIE", "TV"].includes(mediaType)
-		? `${code}|${mediaType}`
+		? `${code}|${mediaType}${sortOptionId === null ? "" : `|${sortOptionId}`}`
 		: null;
 }
 
-export function streamingSourceTitleDraftKey(providerId, regionCode, mediaType) {
-	const candidateKey = streamingSourceCandidateKey(regionCode, mediaType);
+export function streamingSourceTitleDraftKey(providerId, regionCode, mediaType, sortOptionId = null) {
+	const candidateKey = streamingSourceCandidateKey(regionCode, mediaType, sortOptionId);
 	return Number.isSafeInteger(providerId) && providerId > 0 && candidateKey !== null
 		? `${providerId}|${candidateKey}`
 		: null;
@@ -78,18 +79,21 @@ export function streamingSourceTitlesForProvider(titleDrafts, providerId) {
 	for (const [key, title] of Object.entries(titleDrafts)) {
 		if (!key.startsWith(prefix)) continue;
 		const candidateKey = key.slice(prefix.length);
-		const [regionCode, mediaType, ...extra] = candidateKey.split("|");
-		if (extra.length === 0 && streamingSourceCandidateKey(regionCode, mediaType) === candidateKey) titles[candidateKey] = title;
+		const [regionCode, mediaType, sortOptionId = null, ...extra] = candidateKey.split("|");
+		if (extra.length === 0 && (sortOptionId === null || orderedSourceSortIds([sortOptionId]) !== null)
+			&& streamingSourceCandidateKey(regionCode, mediaType, sortOptionId) === candidateKey) titles[candidateKey] = title;
 	}
 	return Object.freeze(titles);
 }
 
 export function defaultStreamingSourceName(providerName, regionCode, mediaType, {
 	context = STREAMING_SOURCE_NAME_CONTEXTS.STANDALONE,
+	sortOptionId = null,
 } = {}) {
 	const name = canonicalText(providerName);
 	const code = canonicalRegionCode(regionCode);
-	const mediaLabel = mediaType === "MOVIE" ? "Movies" : mediaType === "TV" ? "Series" : null;
+	const baseMediaLabel = mediaType === "MOVIE" ? "Movies" : mediaType === "TV" ? "Series" : null;
+	const mediaLabel = baseMediaLabel === null ? null : `${sortOptionId === null ? "" : `${sourceSortLabel(sortOptionId)} `}${baseMediaLabel}`;
 	if (!name || code === null || mediaLabel === null || !Object.values(STREAMING_SOURCE_NAME_CONTEXTS).includes(context)) return null;
 	if (context === STREAMING_SOURCE_NAME_CONTEXTS.GROUPED_BY_SERVICE) return `${mediaLabel} (${code})`;
 	if (context === STREAMING_SOURCE_NAME_CONTEXTS.SEPARATE_BY_REGION) return mediaLabel;
@@ -112,13 +116,28 @@ export function reconcileStreamingSourceTitles(sourceTitles, drafts) {
 	const current = plainObject(sourceTitles) ? sourceTitles : {};
 	const next = {};
 	for (const draft of drafts ?? []) {
-		const key = streamingSourceCandidateKey(
+		const legacyKey = streamingSourceCandidateKey(
 			draft?.editable?.filters?.watchRegion,
-			draft?.editable?.mediaType,
+			 draft?.editable?.mediaType,
 		);
-		if (key !== null && Object.hasOwn(current, key)) next[key] = current[key];
+		const key = streamingSourceCandidateKey(draft?.editable?.filters?.watchRegion, draft?.editable?.mediaType, sourceDraftSortId(draft));
+		for (const candidate of [legacyKey, key]) if (candidate !== null && Object.hasOwn(current, candidate)) next[candidate] = current[candidate];
 	}
 	return Object.freeze(next);
+}
+
+// A sole-sort replacement keeps its edited name. Existing per-sort drafts win;
+// adding/removing members of a multi-sort set never copies an override.
+export function reconcileStreamingSortTitleDrafts(titleDrafts, providerId, previousSortIds, nextSortIds) {
+	if (previousSortIds.length !== 1 || nextSortIds.length !== 1 || previousSortIds[0] === nextSortIds[0]) return titleDrafts;
+	const next = { ...titleDrafts };
+	for (const [candidateKey, title] of Object.entries(streamingSourceTitlesForProvider(titleDrafts, providerId))) {
+		const [region, media, sort] = candidateKey.split("|");
+		if (sort !== previousSortIds[0]) continue;
+		const target = streamingSourceTitleDraftKey(providerId, region, media, nextSortIds[0]);
+		if (!Object.hasOwn(next, target)) next[target] = title;
+	}
+	return next;
 }
 
 function normalizedSelectedRegionCodes(value) {
@@ -180,6 +199,7 @@ export function buildStreamingSourceDrafts(provider, {
 	regionCodes,
 	mediaChoice,
 	sortOptionId = DEFAULT_STREAMING_SORT_OPTION_ID,
+	sortOptionIds,
 	sourceTitles = {},
 	nameContext = STREAMING_SOURCE_NAME_CONTEXTS.STANDALONE,
 } = {}) {
@@ -202,8 +222,9 @@ export function buildStreamingSourceDrafts(provider, {
 			errors.push(diagnostic("UNAVAILABLE_STREAMING_MEDIA", "$streaming.mediaChoice", "This provider does not support that media choice in every selected region."));
 		}
 	}
-	if (!STREAMING_SORT_OPTIONS.some((option) => option.id === sortOptionId)) {
-		errors.push(diagnostic("INVALID_STREAMING_SORT", "$streaming.sortOptionId", "Choose a supported Streaming sort order."));
+	const sorts = orderedSourceSortIds(sortOptionIds, sortOptionId);
+	if (sorts === null) {
+		errors.push(diagnostic("INVALID_STREAMING_SORT", "$streaming.sortOptionId", sourceSortSelectionError(sortOptionIds, "Choose a supported Streaming sort order.")));
 	}
 	if (!plainObject(sourceTitles)) {
 		errors.push(diagnostic("INVALID_STREAMING_SOURCE_TITLES", "$streaming.sourceTitles", "Streaming source names must be keyed by region and media type."));
@@ -215,9 +236,10 @@ export function buildStreamingSourceDrafts(provider, {
 
 	const drafts = [];
 	for (const code of codes) {
+		for (const sort of sorts) {
 		for (const mediaType of choice.mediaTypes) {
-			const candidateKey = streamingSourceCandidateKey(code, mediaType);
-			const defaultTitle = defaultStreamingSourceName(name, code, mediaType, { context: nameContext });
+			const candidateKey = streamingSourceCandidateKey(code, mediaType, sortOptionIds === undefined ? null : sort);
+			const defaultTitle = defaultStreamingSourceName(name, code, mediaType, { context: nameContext, sortOptionId: sorts.length > 1 ? sort : null });
 			const title = Object.hasOwn(sourceTitles, candidateKey) ? sourceTitles[candidateKey] : defaultTitle;
 			if (!isValidNuvioTitle(title)) {
 				errors.push(diagnostic(
@@ -230,7 +252,7 @@ export function buildStreamingSourceDrafts(provider, {
 			const built = buildDiscoverSourceDraft({
 				title: defaultTitle,
 				mediaType,
-				sortOptionId,
+				sortOptionId: sort,
 				filters: {
 					watchRegion: code,
 					withWatchProviders: String(id),
@@ -241,6 +263,7 @@ export function buildStreamingSourceDrafts(provider, {
 				...built.draft,
 				editable: Object.freeze({ ...built.draft.editable, title }),
 			}));
+		}
 		}
 	}
 	return Object.freeze({
@@ -255,9 +278,10 @@ export function validateStreamingSourceDrafts(drafts, {
 	regionCodes,
 	mediaChoice,
 	sortOptionId = DEFAULT_STREAMING_SORT_OPTION_ID,
+	sortOptionIds,
 	nameContext = STREAMING_SOURCE_NAME_CONTEXTS.STANDALONE,
 } = {}) {
-	const expected = buildStreamingSourceDrafts(provider, { regionCodes, mediaChoice, sortOptionId, nameContext });
+	const expected = buildStreamingSourceDrafts(provider, { regionCodes, mediaChoice, sortOptionId, sortOptionIds, nameContext });
 	if (!expected.ok) return Object.freeze({ ok: false, errors: expected.errors });
 	if (!Array.isArray(drafts) || drafts.length !== expected.drafts.length) {
 		return Object.freeze({ ok: false, errors: Object.freeze([
@@ -330,6 +354,7 @@ export function summarizeStreamingSourceDrafts(drafts, duplicateReview = { desti
 			title: canonicalText(draft?.editable?.title),
 			regionCode: canonicalRegionCode(draft?.editable?.filters?.watchRegion),
 			mediaType: draft?.editable?.mediaType ?? null,
+			sortOptionId: sourceDraftSortId(draft),
 			existsInDestination: identity.comparable && destinationIdentities.has(identity.key),
 		});
 	}));
@@ -378,6 +403,7 @@ export function createStreamingSourceBundle(controller, {
 	catalogueRegions,
 	mediaChoice,
 	sortOptionId = DEFAULT_STREAMING_SORT_OPTION_ID,
+	sortOptionIds,
 	drafts,
 	duplicateOverrideIdentity = null,
 	interactionLocked = false,
@@ -391,6 +417,7 @@ export function createStreamingSourceBundle(controller, {
 		regionCodes,
 		mediaChoice,
 		sortOptionId,
+		sortOptionIds,
 	});
 	if (!validation.ok) return { ok: false, errors: validation.errors, warnings: [] };
 	if (interactionLocked) {

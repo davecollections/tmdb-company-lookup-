@@ -1021,7 +1021,7 @@ test("mounted Request artwork is safe external navigation and changes no draft o
 	assert.match(result.ariaLabel, /Focus GIF URL \(opens in a new tab\)/);
 	assert.match(result.href, /^https:\/\/github\.com\/davecollections\/nuvio-people-assets\/issues\/new\?/);
 	const requestUrl = new URL(result.href);
-	assert.equal(requestUrl.searchParams.get("title"), "Artwork request: Kátia Lund — Focus (Poster)");
+	assert.equal(requestUrl.searchParams.get("title"), "Artwork request: Kátia Lund - Focus (Poster)");
 	assert.match(requestUrl.searchParams.get("body"), /TMDB ID: 8559/);
 	assert.match(requestUrl.searchParams.get("body"), /Expected repository path: assets\/people\/8559\/focus-poster\.webp/);
 	assert.equal(result.target, "_blank");
