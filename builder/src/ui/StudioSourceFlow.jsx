@@ -1,3 +1,5 @@
+import { useSourceTitlePreview } from "./use-source-title-preview.js";
+import { SourceVariantReview } from "./SourceVariantReview.jsx";
 import {
 	useEffect,
 	useLayoutEffect,
@@ -13,10 +15,8 @@ import {
 	DEFAULT_STUDIO_SORT_OPTION_ID,
 	formatStudioLocation,
 	inspectStudioSourceDuplicates,
-	requestSourceTitlePreview,
-	sourceTitlePreviewProviderAvailable,
-	sourceTitlePreviewRequest,
 	studioDuplicateOverrideIdentity,
+	studioSourceVariantKey,
 	STUDIO_SOURCE_MODE,
 	STUDIO_SOURCE_OPTIONS,
 	STUDIO_SEARCH_SORTS,
@@ -189,24 +189,9 @@ function currentCountText(option, count) {
 	return { text: "Checking…", state: "checking" };
 }
 
-function joinedLabels(options) {
-	const labels = options.map((option) => option.label);
-	if (labels.length <= 1) return labels[0] ?? "";
-	return `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
-}
-
 export function StudioDuplicateNotice({ duplicateReview }) {
-	const duplicateMedia = new Set(duplicateReview.destination.map((entry) => entry.mediaType));
-	const duplicates = STUDIO_SOURCE_OPTIONS.filter((option) => duplicateMedia.has(option.mediaType));
-	if (duplicates.length === 0) return null;
-	const available = STUDIO_SOURCE_OPTIONS.filter((option) => option.supported && !duplicateMedia.has(option.mediaType));
-	const duplicateVerb = duplicates.length > 1 || duplicates[0].mediaType === "MOVIE" ? "exist" : "exists";
-	const message = available.length
-		? `${joinedLabels(duplicates)} already ${duplicateVerb}. Add will only include ${joinedLabels(available)}.`
-		: `${joinedLabels(duplicates)} already ${duplicateVerb} in this folder.`;
-	return (
-		<p className="studio-duplicate-note" role="status" data-studio-duplicate-warning="true">{message}</p>
-	);
+	const count = duplicateReview.duplicateDrafts?.length ?? 0;
+	return count ? <p className="studio-duplicate-note" role="status" data-studio-duplicate-warning="true">{count} configured source{count === 1 ? " is" : "s are"} already in this folder. Add includes only missing variants.</p> : null;
 }
 
 export function StudioElsewhereNotice({ occurrences, visibleLimit = 3 }) {
@@ -219,11 +204,10 @@ export function StudioConfigureStep({
 	choices,
 	duplicateReview,
 	applyDiagnostic,
-	sortOptionId = DEFAULT_STUDIO_SORT_OPTION_ID,
+	sortOptionIds = [DEFAULT_STUDIO_SORT_OPTION_ID],
 	onToggle,
 	onSortChange = () => {},
 }) {
-	const duplicateMedia = new Set(duplicateReview.destination.map((entry) => entry.mediaType));
 	return (
 		<section className="studio-configure" aria-labelledby="studio-configure-title">
 			{applyDiagnostic ? <div className="editor-diagnostics" role="alert"><p>{applyDiagnostic.message}</p></div> : null}
@@ -237,19 +221,17 @@ export function StudioConfigureStep({
 				<TmdbEntityLink entityType="company" tmdbId={studio.id} entityName={studio.name} />
 			</div>
 			<fieldset className="studio-source-choices">
-				<legend>Sources to add</legend>
+				<legend>Media</legend>
 				<div>
 					{STUDIO_SOURCE_OPTIONS.map((option) => {
-						const duplicate = duplicateMedia.has(option.mediaType);
 						const count = currentCountText(option, counts[option.countKey]);
 						return (
-							<label className="studio-source-choice" key={option.id} data-count-state={count.state} data-source-supported={option.supported ? "true" : "false"} data-source-duplicate={duplicate ? "true" : undefined}>
-								<input className="visually-hidden choice-card-input" type="checkbox" checked={choices.includes(option.id)} disabled={!option.supported || duplicate} onChange={() => onToggle(option.id)} />
+							<label className="studio-source-choice" key={option.id} data-count-state={count.state} data-source-supported={option.supported ? "true" : "false"}>
+								<input className="visually-hidden choice-card-input" type="checkbox" checked={choices.includes(option.id)} disabled={!option.supported} onChange={() => onToggle(option.id)} />
 								<span>
 									<strong>{option.label}</strong>
 									<small>
 										{option.mediaType === "MOVIE" ? "Movies" : "Series"}
-										{duplicate ? <> · <span className="studio-already-added">Already added</span></> : null}
 									</small>
 								</span>
 								<em>{count.text}</em>
@@ -265,7 +247,7 @@ export function StudioConfigureStep({
 				</div>
 			</fieldset>
 			<StudioDuplicateNotice duplicateReview={duplicateReview} />
-			<StudioSortChoices selectedId={sortOptionId} name="studio-configure-sort" onChange={onSortChange} />
+			<StudioSortChoices selectedIds={sortOptionIds} name="studio-configure-sort" onChange={onSortChange} />
 			<StudioElsewhereNotice occurrences={duplicateReview.elsewhere} />
 		</section>
 	);
@@ -304,10 +286,11 @@ export function StudioSourceFlow({
 	const [selectedStudio, setSelectedStudio] = useState(null);
 	const [counts, setCounts] = useState(INITIAL_COUNTS);
 	const [choices, setChoices] = useState([]);
-	const [titleSortOptionId, setTitleSortOptionId] = useState(DEFAULT_STUDIO_SORT_OPTION_ID);
+	const [titleSortOptionIds, setTitleSortOptionIds] = useState([DEFAULT_STUDIO_SORT_OPTION_ID]);
 	const [applyDiagnostic, setApplyDiagnostic] = useState(null);
 	const [isApplying, setIsApplying] = useState(false);
-	const [preview, setPreview] = useState(null);
+	const titlePreview = useSourceTitlePreview("studio", { studio: previewProvider });
+	const preview = titlePreview.preview;
 	const [viewportStyle, setViewportStyle] = useState(() => typeof window === "undefined" ? null : resolveAddSourceViewportStyle(window));
 	const dialogRef = useRef(null);
 	const scrollRef = useRef(null);
@@ -315,33 +298,22 @@ export function StudioSourceFlow({
 	const configureRef = useRef(null);
 	const countCoordinatorRef = useRef(null);
 	const submissionGateRef = useRef(null);
-	const previewTriggerRef = useRef(null);
-	const previewCoordinatorRef = useRef(null);
 	if (!countCoordinatorRef.current) countCoordinatorRef.current = createAsyncRequestCoordinator();
 	if (!submissionGateRef.current) submissionGateRef.current = createSourceSubmissionGate();
-	if (!previewCoordinatorRef.current) previewCoordinatorRef.current = createAsyncRequestCoordinator();
 
-	const duplicateReview = selectedStudio
-		? inspectStudioSourceDuplicates(project, folder?.internalId ?? null, selectedStudio.id)
-		: { destination: [], elsewhere: [] };
-	const draftResult = selectedStudio ? buildStudioSourceDrafts(selectedStudio, { choices, sortOptionId: titleSortOptionId }) : { ok: false, drafts: [], errors: [] };
-	const duplicateMedia = new Set(duplicateReview.destination.map((entry) => entry.mediaType));
-	const configuredChoices = STUDIO_SOURCE_OPTIONS
-		.filter((option) => duplicateMedia.has(option.mediaType) || choices.includes(option.id))
-		.map((option) => option.id);
-	const allDraftResult = selectedStudio ? buildStudioSourceDrafts(selectedStudio, { choices: configuredChoices, sortOptionId: titleSortOptionId }) : { ok: false, drafts: [], errors: [] };
+	const draftResult = selectedStudio ? buildStudioSourceDrafts(selectedStudio, { choices, sortOptionIds: titleSortOptionIds }) : { ok: false, drafts: [], errors: [] };
+	const duplicateReview = inspectStudioSourceDuplicates(project, folder?.internalId ?? null, draftResult.ok ? draftResult.drafts : []);
 	const step = navigation.step;
 
 	usePrePaintLayoutEffect(() => {
 		const unlockBody = lockAddSourceDocumentBody();
 		const stopViewport = observeAddSourceViewport(setViewportStyle);
-		focusElementWithoutScroll(inputRef.current ?? dialogRef.current);
+		focusElementWithoutScroll(dialogRef.current);
 		return () => { stopViewport(); unlockBody(); };
 	}, []);
 
 	useEffect(() => () => {
 		countCoordinatorRef.current.cancel({ notify: false });
-		previewCoordinatorRef.current.cancel({ notify: false });
 	}, []);
 
 	useEffect(() => {
@@ -379,12 +351,9 @@ export function StudioSourceFlow({
 
 	function selectStudio(studio) {
 		countCoordinatorRef.current.cancel({ notify: false });
-		const review = inspectStudioSourceDuplicates(project, folder?.internalId ?? null, studio.id);
-		const movieDuplicate = review.destination.some((entry) => entry.mediaType === "MOVIE");
-		const seriesDuplicate = review.destination.some((entry) => entry.mediaType === "TV");
 		setSelectedStudio(studio);
-		setChoices(!movieDuplicate ? ["studio-movies"] : !seriesDuplicate ? ["studio-series"] : []);
-		setTitleSortOptionId(DEFAULT_STUDIO_SORT_OPTION_ID);
+		setChoices(["studio-movies"]);
+		setTitleSortOptionIds([DEFAULT_STUDIO_SORT_OPTION_ID]);
 		setApplyDiagnostic(null);
 		setNavigation((current) => enterStudioConfigure(current, studio.id, scrollRef.current?.scrollTop ?? 0));
 		loadCounts(studio);
@@ -401,8 +370,6 @@ export function StudioSourceFlow({
 	function toggleChoice(choiceId) {
 		const option = STUDIO_SOURCE_OPTIONS.find((entry) => entry.id === choiceId);
 		if (!option?.supported) return;
-		const identity = `tmdb|COMPANY|${selectedStudio.id}|${option.mediaType}`;
-		if (duplicateReview.destination.some((entry) => entry.identity === identity)) return;
 		setChoices((current) => current.includes(choiceId) ? current.filter((entry) => entry !== choiceId) : [...current, choiceId]);
 		setApplyDiagnostic(null);
 	}
@@ -417,7 +384,7 @@ export function StudioSourceFlow({
 	}
 
 	async function applyStudioSources(addAllAnyway = false) {
-		const submission = addAllAnyway ? allDraftResult : draftResult;
+		const submission = draftResult;
 		if (step !== STUDIO_SOURCE_STEPS.CONFIGURE || !submission.ok || isApplying || !submissionGateRef.current.begin()) return;
 		setIsApplying(true);
 		let result;
@@ -443,54 +410,13 @@ export function StudioSourceFlow({
 		applyStudioSources(false);
 	}
 
-	function studioPreviewCandidate(draft) {
-		return Object.freeze({ sourceDraft: draft, request: sourceTitlePreviewRequest("studio", draft) });
-	}
-
-	async function loadPreview(candidate) {
-		setPreview({ status: "loading", candidate, data: null, error: null });
-		const outcome = await previewCoordinatorRef.current.run(
-			({ signal }) => requestSourceTitlePreview(candidate.request, { studio: previewProvider }, signal),
-			candidate.request.mediaType,
-		);
-		if (!outcome.accepted) return;
-		if (outcome.result?.ok) setPreview({ status: "ready", candidate, data: outcome.result.data, error: null });
-		else if (outcome.result?.error?.kind !== "aborted") setPreview({ status: "error", candidate, data: null, error: outcome.result?.error });
-	}
-
-	function openPreview(event) {
-		const firstDraft = allDraftResult.ok ? allDraftResult.drafts[0] : null;
-		if (!firstDraft || isApplying) return;
-		previewTriggerRef.current = event.currentTarget;
-		loadPreview(studioPreviewCandidate(firstDraft));
-	}
-
-	function closePreview() {
-		previewCoordinatorRef.current.cancel({ notify: false });
-		setPreview(null);
-		const trigger = previewTriggerRef.current;
-		previewTriggerRef.current = null;
-		window.requestAnimationFrame(() => focusElementWithoutScroll(trigger));
-	}
-
 	const cancel = () => {
 		if (!isApplying && !submissionGateRef.current.isActive()) onCancel();
 	};
-	const primaryCount = draftResult.ok ? draftResult.drafts.length : 0;
-	const configuredCount = allDraftResult.ok ? allDraftResult.drafts.length : 0;
+	const primaryCount = duplicateReview.counts.toAdd;
+	const configuredCount = duplicateReview.counts.configured;
 	const hasDestinationDuplicates = duplicateReview.destination.length > 0;
-	const previewAvailable = allDraftResult.ok && allDraftResult.drafts.length > 0 && sourceTitlePreviewProviderAvailable(sourceTitlePreviewRequest("studio", allDraftResult.drafts[0]), { studio: previewProvider });
-	const previewSelectorGroups = preview && allDraftResult.drafts.length > 1 ? [{
-		id: "media",
-		label: "Media",
-		ariaLabel: "Preview media",
-		options: allDraftResult.drafts.map((draft) => ({
-			id: draft.editable.mediaType,
-			label: draft.editable.mediaType === "TV" ? "Series" : "Movies",
-			selected: preview.candidate.request.mediaType === draft.editable.mediaType,
-			onSelect: () => loadPreview(studioPreviewCandidate(draft)),
-		})),
-	}] : [];
+	const previewAvailable = draftResult.ok && titlePreview.available(draftResult.drafts);
 	const content = (
 		<div className="add-source-portal" data-add-source-portal="true" data-mobile-surface="opaque">
 			<div className="settings-modal-backdrop add-source-backdrop" data-add-source-modal-backdrop="true" data-backdrop-dismiss="false" style={viewportStyle ?? undefined}>
@@ -509,8 +435,9 @@ export function StudioSourceFlow({
 								<StudioSearchStep input={search.input} inputRef={inputRef} parsedInput={search.parsedInput} lookupState={search.lookupState} searchData={search.searchData} effectiveSearchSort={search.effectiveSearchSort} browsing={search.browsing} movieCountFilter={search.movieCountFilter} selectedStudioId={selectedStudio?.id ?? null} onInputChange={handleSearchInputChange} onSortChange={toggleSearchSort} onMovieCountFilterChange={search.changeMovieCountFilter} onRetry={search.retrySearch} onSelect={selectStudio} onChangePage={search.setPage} />
 							) : (
 								<div ref={configureRef} className="studio-configure-focus-target" tabIndex={-1}>
-									<StudioConfigureStep studio={selectedStudio} counts={counts} choices={choices} duplicateReview={duplicateReview} applyDiagnostic={applyDiagnostic} sortOptionId={titleSortOptionId} onToggle={toggleChoice} onSortChange={(optionId) => { setTitleSortOptionId(optionId); setApplyDiagnostic(null); }} />
-									<div className="source-edit-preview-action genre-hierarchy-configure-row-actions"><button type="button" aria-haspopup="dialog" data-action="preview-add-studio" disabled={!previewAvailable || isApplying} onClick={openPreview}>Preview titles</button>{!previewAvailable ? <p className="editor-field-help">Choose a valid source configuration to preview.</p> : null}</div>
+									<StudioConfigureStep studio={selectedStudio} counts={counts} choices={choices} duplicateReview={duplicateReview} applyDiagnostic={applyDiagnostic} sortOptionIds={titleSortOptionIds} onToggle={toggleChoice} onSortChange={(optionId) => { setTitleSortOptionIds(optionId); setApplyDiagnostic(null); }} />
+									<SourceVariantReview drafts={draftResult.drafts} review={duplicateReview} variantKey={studioSourceVariantKey} />
+									<div className="source-edit-preview-action genre-hierarchy-configure-row-actions"><button type="button" aria-haspopup="dialog" data-action="preview-add-studio" disabled={!previewAvailable || isApplying} onClick={(event) => titlePreview.open(draftResult.drafts, { trigger: event.currentTarget, label: selectedStudio.name })}>Preview titles</button>{!previewAvailable ? <p className="editor-field-help">Choose a valid source configuration to preview.</p> : null}</div>
 								</div>
 							)}
 						</div>
@@ -518,7 +445,7 @@ export function StudioSourceFlow({
 					</form>
 				</section>
 			</div>
-			{preview ? <SourceTitlePreviewDialog preview={preview} titleId="studio-add-preview-title" backdropProps={{ "data-studio-add-preview-backdrop": "true" }} dialogProps={{ "data-studio-add-preview": "true" }} selectorGroups={previewSelectorGroups} onClose={closePreview} onRetry={() => loadPreview(preview.candidate)} /> : null}
+			{preview ? <SourceTitlePreviewDialog preview={preview} titleId="studio-add-preview-title" backdropProps={{ "data-studio-add-preview-backdrop": "true" }} dialogProps={{ "data-studio-add-preview": "true" }} {...titlePreview.dialogProps} /> : null}
 		</div>
 	);
 	return typeof document === "undefined" ? content : createPortal(content, document.body);

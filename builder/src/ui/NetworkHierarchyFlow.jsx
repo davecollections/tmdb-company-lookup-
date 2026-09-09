@@ -1,7 +1,10 @@
+import { useNativeFolderPlacement, NativeFolderPlacementNotice, NativeFolderPlacementSummary } from "./NativeFolderPlacement.jsx";
+import { useSourceTitlePreview } from "./use-source-title-preview.js";
+import { SourceTitlePreviewDialog } from "./SourceTitlePreviewDialog.jsx";
+import { SourceVariantCounts } from "./SourceVariantReview.jsx";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
-	buildNetworkHierarchySourceDraft,
-	createAsyncRequestCoordinator,
+	buildNetworkSourceDrafts,
 	createNetworkHierarchyPlan,
 	createNetworkSelectionState,
 	DEFAULT_NETWORK_ARTWORK_ORIENTATION,
@@ -10,7 +13,6 @@ import {
 	formatNetworkLocation,
 	inspectNetworkHierarchyPlacement,
 	networkSelectionNotice,
-	networkSortValue,
 	NETWORK_PLACEMENT_STATUSES,
 	removeSelectedNetwork,
 	resolveNetworkFolderArtworkBatch,
@@ -22,10 +24,8 @@ import { HierarchyCollectionPresentationControls } from "./CollectionPresentatio
 import { CreationHeader } from "./CreationHeader.jsx";
 import { guidedCreateActionLabel } from "./creation-options.js";
 import { focusElementWithoutScroll } from "./hierarchy-menu-placement.js";
-import { NestedPreviewDialog } from "./NestedPreviewDialog.jsx";
 import { NetworkLogo, NetworkResultContent, NetworkSearchStep } from "./NetworkSourceFlow.jsx";
 import { NetworkSortChoices } from "./NetworkSortChoices.jsx";
-import { PosterOnlyPreviewGrid } from "./PosterOnlyPreviewGrid.jsx";
 import { FolderShapeChoices, HiddenTitleFieldHelp, PresentationSwitch, TitleOptions } from "./PresentationControls.jsx";
 import { SourceElsewhereNotice } from "./SourceElsewhereNotice.jsx";
 import { useNetworkCatalogueSearch } from "./use-network-catalogue-search.js";
@@ -71,30 +71,7 @@ function SelectableNetworkResult({ network, checked, onToggle }) {
 	);
 }
 
-function NetworkTitlePreview({ preview, onClose, onRetry }) {
-	const dialogRef = useRef(null);
-	const closeRef = useRef(null);
-	const items = preview.data?.results ?? [];
-	return (
-		<NestedPreviewDialog ariaLabelledBy="network-preview-title" backdropClassName="franchise-preview-backdrop studio-preview-backdrop network-preview-backdrop" backdropProps={{ "data-network-preview-backdrop": "true" }} dialogClassName="franchise-preview-modal studio-preview-modal network-preview-modal" dialogRef={dialogRef} initialFocusRef={closeRef} onClose={onClose}>
-			<header><div><p className="panel-kicker">Title preview</p><h3 id="network-preview-title">{preview.network.name}</h3></div><button ref={closeRef} type="button" onClick={onClose}>Close</button></header>
-			{preview.status === "loading" ? <p className="studio-preview-state" role="status">Preparing preview…</p> : null}
-			{preview.status === "error" ? <div className="studio-preview-state add-source-request-state" role="alert"><p>{preview.error?.message ?? "This Network preview could not be prepared."}</p><button type="button" onClick={onRetry}>Retry</button></div> : null}
-			{preview.status === "ready" ? <>
-				<p className="studio-preview-single-media network-preview-count">Series Count: {formatCount(preview.data?.totalResults)}</p>
-				<PosterOnlyPreviewGrid items={items} limit={10} className="franchise-preview-grid studio-preview-grid network-preview-grid" ariaLabel="Series poster preview" altPrefix="Series" emptyMessage="No posters available." />
-			</> : null}
-		</NestedPreviewDialog>
-	);
-}
-
-function placementLabel(status) {
-	if (status === NETWORK_PLACEMENT_STATUSES.ALREADY_IN_COLLECTION) return "Already in this collection · omitted";
-	if (status === NETWORK_PLACEMENT_STATUSES.EXISTS_ELSEWHERE) return "Exists elsewhere · ready to create";
-	return "Ready to create";
-}
-
-function NetworkConfigureRow({ network, exactCount, outcome, onPreview, onRemove }) {
+function NetworkConfigureRow({ network, exactCount, outcome, onPreview, onRemove, placement }) {
 	const location = network.location || formatNetworkLocation(network);
 	return <article className="studio-configure-row network-configure-row" data-network-id={network.id} data-placement-status={outcome?.status ?? NETWORK_PLACEMENT_STATUSES.READY}>
 		<div className="studio-configure-row-main">
@@ -106,20 +83,21 @@ function NetworkConfigureRow({ network, exactCount, outcome, onPreview, onRemove
 			</div>
 			<div className="studio-configure-row-actions"><button type="button" aria-haspopup="dialog" aria-label={`Preview ${network.name}`} onClick={(event) => onPreview(network, event.currentTarget)}>Preview</button><button className="studio-configure-remove" type="button" aria-label={`Remove ${network.name}`} onClick={() => onRemove(network.id)}>×</button></div>
 		</div>
-		<p className="studio-configure-placement">{placementLabel(outcome?.status)}</p>
+		<NativeFolderPlacementNotice name={network.name} outcome={outcome} onChoose={placement} />
 		{outcome?.elsewhere?.length ? <details className="studio-configure-locations"><summary>View locations</summary><SourceElsewhereNotice occurrences={outcome.elsewhere} heading="This Network exists elsewhere" action="It can still be created here when the destination is clear." /></details> : null}
 	</article>;
 }
 
-function ConfigureStep({ networks, exactCounts, outcomes, sortOptionId, onSortChange, onPreview, onRemove, headingRef }) {
+function ConfigureStep({ networks, exactCounts, outcomes, sortOptionIds, onSortChange, onPreview, onRemove, headingRef, placement }) {
 	return (
 		<section className="studio-hierarchy-configure network-hierarchy-configure" aria-labelledby="network-hierarchy-configure-title">
 			<div className="add-source-section-heading"><div><p className="panel-kicker">Step 2</p><h3 id="network-hierarchy-configure-title" ref={headingRef} tabIndex={-1}>Configure Networks</h3></div></div>
 			<p className="studio-configure-helper">This sort applies to every selected Network.</p>
-			<NetworkSortChoices selectedId={sortOptionId} name="network-hierarchy-sort" onChange={onSortChange} />
+			<NetworkSortChoices selectedIds={sortOptionIds} name="network-hierarchy-sort" onChange={onSortChange} />
+			{placement ? <NativeFolderPlacementSummary counts={placement.counts} /> : null}
 			<section className="studio-configure-selected network-configure-selected" aria-labelledby="network-configure-selected-title">
 				<div className="add-source-section-heading"><div><h4 id="network-configure-selected-title">Selected Networks{networks.length ? ` · ${networks.length}` : ""}</h4></div></div>
-				{networks.length ? <div className="studio-configure-list network-configure-list">{networks.map((network, index) => <NetworkConfigureRow key={network.id} network={network} exactCount={exactCounts[network.id]} outcome={outcomes[index]} onPreview={onPreview} onRemove={onRemove} />)}</div> : <p className="studio-configure-empty" role="status">No Networks selected. Go Back to Select to choose at least one Network.</p>}
+				{networks.length ? <div className="studio-configure-list network-configure-list">{networks.map((network, index) => <NetworkConfigureRow key={network.id} network={network} exactCount={exactCounts[network.id]} outcome={outcomes[index]} onPreview={onPreview} onRemove={onRemove} placement={(folderId) => placement.choose(index, folderId)} />)}</div> : <p className="studio-configure-empty" role="status">No Networks selected. Go Back to Select to choose at least one Network.</p>}
 			</section>
 		</section>
 	);
@@ -134,7 +112,9 @@ function AppearanceStep({ planResult, options, onOptionsChange, onArtworkChange,
 	return (
 		<section className="studio-hierarchy-review studio-hierarchy-appearance network-hierarchy-appearance" aria-labelledby="network-hierarchy-appearance-title">
 			<div className="add-source-section-heading"><div><p className="panel-kicker">Step 3</p><h3 id="network-hierarchy-appearance-title" ref={headingRef} tabIndex={-1}>Appearance</h3></div></div>
-			{plan ? <div className="decades-plan-totals" data-plan-scope={plan.configuration.scope} aria-label="Plan totals">{plan.configuration.scope === "new-collection" ? <div><strong>{plan.counts.collectionCount}</strong><span>Collection</span></div> : null}<div><strong>{plan.counts.folderCount}</strong><span>Folder{plan.counts.folderCount === 1 ? "" : "s"}</span></div><div><strong>{plan.counts.sourceCount}</strong><span>Source{plan.counts.sourceCount === 1 ? "" : "s"}</span></div></div> : null}
+			{plan ? <SourceVariantCounts counts={plan.counts} /> : null}
+			{plan?.configuration.scope === "new-folder" ? <p className="editor-field-help">Appearance applies only to new folders.</p> : null}
+			{plan?.configuration.scope === "new-collection" ? <div className="decades-plan-totals" data-plan-scope={plan.configuration.scope} aria-label="Plan totals">{plan.configuration.scope === "new-collection" ? <div><strong>{plan.counts.collectionCount}</strong><span>Collection</span></div> : null}<div><strong>{plan.counts.folderCount}</strong><span>Folder{plan.counts.folderCount === 1 ? "" : "s"}</span></div><div><strong>{plan.counts.sourceCount}</strong><span>Source{plan.counts.sourceCount === 1 ? "" : "s"}</span></div></div> : null}
 			{options.scope === "new-collection" ? <>
 				<div className="editor-field"><label htmlFor="network-collection-name">Collection name</label><input id="network-collection-name" type="text" {...reversibleTitleFieldProps(options.collectionTitle, options.hideCollectionTitle)} aria-describedby={options.hideCollectionTitle ? "network-collection-title-hidden-help" : undefined} onChange={(event) => onOptionsChange({ collectionTitle: event.target.value })} /><HiddenTitleFieldHelp id="network-collection-title-hidden-help" hidden={options.hideCollectionTitle} kind="collection" /></div>
 				<TitleOptions idPrefix="network-hierarchy" collectionTitleVisibility={{ checked: options.hideCollectionTitle, onChange: (hideCollectionTitle) => onOptionsChange({ hideCollectionTitle }), descriptionId: "network-hide-title-help", controlName: "networkHideNuvioTitle" }} folderTitleVisibility={{ selectedId: options.folderTitleVisibility, name: "network-folder-title-visibility", onChange: (folderTitleVisibility) => onOptionsChange({ folderTitleVisibility }) }} />
@@ -169,9 +149,10 @@ export function NetworkHierarchyFlow({
 	const [step, setStep] = useState("select");
 	const [selection, setSelection] = useState(createNetworkSelectionState);
 	const [exactCounts, setExactCounts] = useState({});
-	const [options, setOptions] = useState(() => Object.freeze({ scope, destinationCollectionTitle, collectionTitle: "Networks", hideCollectionTitle: false, viewMode: "TABBED_GRID", showAllTab: true, pinToTop: false, folderTitleVisibility: DEFAULT_NETWORK_FOLDER_TITLE_VISIBILITY, artworkOrientation: DEFAULT_NETWORK_ARTWORK_ORIENTATION, sortOptionId: DEFAULT_NETWORK_SORT_OPTION_ID }));
+	const [options, setOptions] = useState(() => Object.freeze({ scope, destinationCollectionTitle, collectionTitle: "Networks", hideCollectionTitle: false, viewMode: "TABBED_GRID", showAllTab: true, pinToTop: false, folderTitleVisibility: DEFAULT_NETWORK_FOLDER_TITLE_VISIBILITY, artworkOrientation: DEFAULT_NETWORK_ARTWORK_ORIENTATION, sortOptionIds: [DEFAULT_NETWORK_SORT_OPTION_ID] }));
 	const [artworkBatch, setArtworkBatch] = useState(null);
-	const [preview, setPreview] = useState(null);
+	const titlePreview = useSourceTitlePreview("network", { network: previewProvider });
+	const preview = titlePreview.preview;
 	const [diagnostic, setDiagnostic] = useState(null);
 	const [isPreparing, setIsPreparing] = useState(false);
 	const [isApplying, setIsApplying] = useState(false);
@@ -183,20 +164,24 @@ export function NetworkHierarchyFlow({
 	const selectHeadingRef = useRef(null);
 	const configureHeadingRef = useRef(null);
 	const appearanceHeadingRef = useRef(null);
-	const previewCoordinatorRef = useRef(null);
-	const previewTriggerRef = useRef(null);
-	const previewTokenRef = useRef(null);
 	const artworkTokenRef = useRef(null);
 	const artworkSelectionIdsRef = useRef(chosenIds);
 	const artworkOrientationRef = useRef(DEFAULT_NETWORK_ARTWORK_ORIENTATION);
 	const isPreparingRef = useRef(false);
 	const scrollByStepRef = useRef({ select: 0, configure: 0, appearance: 0 });
 	artworkSelectionIdsRef.current = chosenIds;
-	if (previewCoordinatorRef.current === null) previewCoordinatorRef.current = createAsyncRequestCoordinator();
 
-	const planResult = useMemo(() => artworkBatch && artworkBatch.orientation === options.artworkOrientation && artworkBatch.items.length === chosen.length ? createNetworkHierarchyPlan(project, {
+	const configureEntries = useMemo(() => chosen.map((network) => {
+		const result = buildNetworkSourceDrafts(network, { sortOptionIds: options.sortOptionIds, hierarchy: true });
+		return { network, result, outcome: result.ok ? inspectNetworkHierarchyPlacement(project, result.drafts, { destinationCollectionInternalId: scope === "new-folder" ? destinationCollectionInternalId : null }) : null };
+	}), [chosen, destinationCollectionInternalId, options.sortOptionIds, project, scope]);
+	const placement = useNativeFolderPlacement(scope === "new-folder" ? destinationCollectionInternalId : null, configureEntries.map((entry) => ({ id: entry.network.id, drafts: entry.result.drafts, outcome: entry.outcome })));
+	const configureOutcomes = placement.outcomes;
+	const configurationValid = configureEntries.length > 0 && configureEntries.every((entry) => entry.result.ok) && (scope !== "new-folder" || (placement.counts?.sourceCount > 0 && placement.counts.unresolvedEntityCount === 0));
+	const preparePlan = (resolvedArtworks) => createNetworkHierarchyPlan(project, {
 		scope,
 		projectRevision,
+		folderDestinations: placement.folderDestinations,
 		...(scope === "new-folder" ? { destinationCollectionInternalId } : {
 			collectionTitle: options.collectionTitle,
 			hideCollectionTitle: options.hideCollectionTitle,
@@ -206,18 +191,18 @@ export function NetworkHierarchyFlow({
 		}),
 		folderTitleVisibility: options.folderTitleVisibility,
 		artworkOrientation: options.artworkOrientation,
-		sortOptionId: options.sortOptionId,
-		networks: chosen.map((network, index) => ({ network, artwork: artworkBatch.items[index] })),
-	}) : null, [artworkBatch, chosen, destinationCollectionInternalId, options, project, projectRevision, scope]);
+		sortOptionIds: options.sortOptionIds,
+		networks: chosen.map((network, index) => ({ network, artwork: resolvedArtworks[index] })),
+	});
+	const appendOnly = scope === "new-folder" && placement.counts?.folderCount === 0;
+	const planResult = useMemo(() => artworkBatch && artworkBatch.orientation === options.artworkOrientation && artworkBatch.items.length === chosen.length ? preparePlan(artworkBatch.items) : null, [artworkBatch, chosen, destinationCollectionInternalId, options, project, projectRevision, scope, placement.folderDestinations]);
 
-	const configureOutcomes = useMemo(() => Object.freeze(chosen.map((network) => {
-		const result = buildNetworkHierarchySourceDraft(network, { sortOptionId: options.sortOptionId });
-		return result.ok ? inspectNetworkHierarchyPlacement(project, result.draft, { destinationCollectionInternalId: scope === "new-folder" ? destinationCollectionInternalId : null }) : null;
-	})), [chosen, destinationCollectionInternalId, options.sortOptionId, project, scope]);
+
+	useEffect(() => {
+		if (preview?.status === "ready") setExactCounts((current) => ({ ...current, [preview.candidate.request.tmdbId]: preview.data.totalResults }));
+	}, [preview]);
 
 	useEffect(() => () => {
-		previewCoordinatorRef.current.cancel({ notify: false });
-		previewTokenRef.current = null;
 		artworkTokenRef.current = null;
 	}, []);
 
@@ -247,42 +232,15 @@ export function NetworkHierarchyFlow({
 		setDiagnostic(null);
 	}
 
-	async function requestPreview(network, trigger = null) {
+	function requestPreview(network, trigger = null) {
 		if (isPreparingRef.current) return;
-		if (trigger) previewTriggerRef.current = trigger;
-		previewCoordinatorRef.current.cancel({ notify: false });
-		const sortOptionId = options.sortOptionId;
-		const token = Symbol(`network-preview-${network.id}-${sortOptionId}`);
-		previewTokenRef.current = token;
-		setPreview({ network, sortOptionId, status: "loading", data: null, error: null });
-		const outcome = await previewCoordinatorRef.current.run(
-			({ signal }) => previewProvider.getNetworkPreview(network.id, { sortOptionId, signal }),
-			{ networkId: network.id, mediaType: "TV", sortBy: networkSortValue(sortOptionId) },
-		);
-		if (!outcome.accepted || previewTokenRef.current !== token) return;
-		if (outcome.result?.ok) {
-			setPreview({ network, sortOptionId, status: "ready", data: outcome.result.data, error: null });
-			setExactCounts((current) => Object.freeze({ ...current, [network.id]: outcome.result.data.totalResults }));
-		} else if (outcome.result?.error?.kind !== "aborted") {
-			setPreview({ network, sortOptionId, status: "error", data: null, error: outcome.result?.error ?? { message: "This Network preview could not be prepared." } });
-		}
+		const entry = configureEntries.find((candidate) => candidate.network.id === network.id);
+		if (entry?.result.ok) titlePreview.open(entry.result.drafts, { trigger, label: network.name });
 	}
 
-	function closePreview() {
-		previewCoordinatorRef.current.cancel({ notify: false });
-		previewTokenRef.current = null;
-		const trigger = previewTriggerRef.current;
-		previewTriggerRef.current = null;
-		setPreview(null);
-		queueMicrotask(() => focusElementWithoutScroll(trigger));
-	}
-
-	function changeSort(sortOptionId) {
-		if (isPreparingRef.current || sortOptionId === options.sortOptionId) return;
-		previewCoordinatorRef.current.cancel({ notify: false });
-		previewTokenRef.current = null;
-		setPreview(null);
-		updateOptions({ sortOptionId });
+	function changeSort(sortOptionIds) {
+		if (isPreparingRef.current || sortOptionIds === options.sortOptionIds) return;
+		updateOptions({ sortOptionIds });
 	}
 
 	async function prepareArtwork(orientation, { advance = false } = {}) {
@@ -346,7 +304,12 @@ export function NetworkHierarchyFlow({
 			return;
 		}
 		if (step === "configure") {
-			if (!chosen.length || isPreparingRef.current) return;
+			if (!configurationValid || isPreparingRef.current) return;
+			if (appendOnly) {
+				const placeholders = await resolveNetworkFolderArtworkBatch(chosen, null, { orientation: options.artworkOrientation });
+				await applyPreparedPlan(preparePlan(placeholders));
+				return;
+			}
 			await prepareArtwork(options.artworkOrientation, { advance: true });
 			return;
 		}
@@ -354,10 +317,14 @@ export function NetworkHierarchyFlow({
 			await prepareArtwork(options.artworkOrientation);
 			return;
 		}
-		if (!planResult?.ok || planResult.plan.counts.folderCount === 0 || isApplying) return;
+		await applyPreparedPlan(planResult);
+	}
+
+	async function applyPreparedPlan(resultPlan) {
+		if (!resultPlan?.ok || resultPlan.plan.counts.sourceCount === 0 || resultPlan.plan.counts.unresolvedEntityCount > 0 || isApplying) return;
 		setIsApplying(true);
 		let result;
-		try { result = await onApply(planResult.plan); } catch { result = { ok: false, errors: [{ message: "Networks could not be created. Try again." }] }; }
+		try { result = await onApply(resultPlan.plan); } catch { result = { ok: false, errors: [{ message: "Networks could not be created. Try again." }] }; }
 		if (result?.ok) return;
 		setIsApplying(false);
 		setDiagnostic(result?.errors?.[0] ?? { message: "Networks could not be created. Try again." });
@@ -366,26 +333,26 @@ export function NetworkHierarchyFlow({
 	const primaryDisabled = step === "select"
 		? chosen.length === 0
 		: step === "configure"
-			? chosen.length === 0 || isPreparing
-			: isPreparing || (artworkBatch ? (!planResult?.ok || planResult.plan.counts.folderCount === 0 || isApplying) : chosen.length === 0);
+			? !configurationValid || isPreparing || isApplying
+			: isPreparing || (artworkBatch ? (!planResult?.ok || planResult.plan.counts.sourceCount === 0 || planResult.plan.counts.unresolvedEntityCount > 0 || isApplying) : chosen.length === 0);
 	const primaryLabel = step === "select"
 		? `Configure ${chosen.length} Network${chosen.length === 1 ? "" : "s"}`
 		: step === "configure"
-			? isPreparing ? "Preparing artwork…" : "Continue to Appearance"
-			: isPreparing ? "Preparing artwork…" : !artworkBatch ? "Retry artwork" : isApplying ? "Creating…" : guidedCreateActionLabel(scope);
+			? isApplying ? "Adding…" : isPreparing ? "Preparing artwork…" : appendOnly ? "Add sources" : "Continue to Appearance"
+			: isPreparing ? "Preparing artwork…" : !artworkBatch ? "Retry artwork" : isApplying ? "Applying…" : planResult?.plan?.counts.existingFolderAdditionCount > 0 ? "Apply changes" : guidedCreateActionLabel(scope);
 
 	return <>
-		<CreationHeader title="Create with Networks" context={`${scopeLabel(scope)}${scope === "new-folder" && destinationCollectionTitle ? ` · ${destinationCollectionTitle}` : ""}`} description={step === "select" ? "Select Networks in folder order." : step === "configure" ? "Choose one shared Series sort and preview when useful." : "Choose presentation settings."} onBack={goBack} backAction={step === "select" ? "back-to-creation-launcher" : step === "configure" ? "back-to-network-selection" : "back-to-network-configuration"} backDisabled={isApplying || isPreparing} inactive={Boolean(preview)} onClose={onCancel} />
+		<CreationHeader title="Create with Networks" context={`${scopeLabel(scope)}${scope === "new-folder" && destinationCollectionTitle ? ` · ${destinationCollectionTitle}` : ""}`} description={step === "select" ? "Select Networks in folder order." : step === "configure" ? "Choose shared Series source options and preview when useful." : "Choose presentation settings."} onBack={goBack} backAction={step === "select" ? "back-to-creation-launcher" : step === "configure" ? "back-to-network-selection" : "back-to-network-configuration"} backDisabled={isApplying || isPreparing} inactive={Boolean(preview)} onClose={onCancel} />
 		<form className="add-source-form studio-hierarchy-form network-hierarchy-form" data-network-hierarchy-stage={step} onSubmit={submit} noValidate>
 			<div ref={scrollRef} className="add-source-scroll" inert={preview || undefined} aria-hidden={preview ? "true" : undefined}>
 				{step === "select" ? <>
 					<div ref={selectHeadingRef} tabIndex={-1} className="studio-hierarchy-focus-target network-hierarchy-focus-target" />
 					{chosen.length ? <section className="people-selected-tray studio-selected-tray network-selected-tray"><div className="people-selected-summary"><strong>{chosen.length} Network{chosen.length === 1 ? "" : "s"} selected</strong><SelectedNetworks networks={chosen} onRemove={removeNetwork} /></div>{notice.visible ? <p className="people-selection-limit" data-large-selection-notice="true" role="status">You’ve selected {notice.count} Networks. Configure may take a little longer, but there is no selection cap.</p> : null}</section> : null}
 					<NetworkSearchStep input={search.input} parsedInput={search.parsedInput} lookupState={search.lookupState} searchData={search.searchData} effectiveSearchSort={search.effectiveSearchSort} browsing={search.browsing} seriesCountFilter={search.seriesCountFilter} showSeriesCountFilters onInputChange={search.handleInputChange} onSortChange={search.toggleSearchSort} onSeriesCountFilterChange={search.changeSeriesCountFilter} onRetry={search.retrySearch} onSelect={() => {}} onChangePage={search.setPage} resultsHeading="Select Networks" stageKicker="Step 1 · Select" renderResult={(network) => <SelectableNetworkResult key={network.id} network={network} checked={Boolean(selection.byId[network.id])} onToggle={toggleNetwork} />} />
-				</> : step === "configure" ? <div inert={isPreparing || undefined} aria-busy={isPreparing ? "true" : undefined}><ConfigureStep networks={chosen} exactCounts={exactCounts} outcomes={configureOutcomes} sortOptionId={options.sortOptionId} onSortChange={changeSort} onPreview={requestPreview} onRemove={removeNetwork} headingRef={configureHeadingRef} />{diagnostic ? <div className="editor-diagnostics" role="alert"><p>{diagnostic.message}</p></div> : null}</div> : <AppearanceStep planResult={planResult} options={options} onOptionsChange={updateOptions} onArtworkChange={changeArtworkOrientation} diagnostic={diagnostic} headingRef={appearanceHeadingRef} isPreparing={isPreparing} />}
+				</> : step === "configure" ? <div inert={isPreparing || undefined} aria-busy={isPreparing ? "true" : undefined}><ConfigureStep networks={chosen} exactCounts={exactCounts} outcomes={configureOutcomes} placement={scope === "new-folder" ? placement : null} sortOptionIds={options.sortOptionIds} onSortChange={changeSort} onPreview={requestPreview} onRemove={removeNetwork} headingRef={configureHeadingRef} />{diagnostic ? <div className="editor-diagnostics" role="alert"><p>{diagnostic.message}</p></div> : null}</div> : <AppearanceStep planResult={planResult} options={options} onOptionsChange={updateOptions} onArtworkChange={changeArtworkOrientation} diagnostic={diagnostic} headingRef={appearanceHeadingRef} isPreparing={isPreparing} />}
 			</div>
-			<footer className="add-source-actions"><button className="editor-apply" type="submit" disabled={primaryDisabled}>{primaryLabel}</button></footer>
+			<footer className="add-source-actions"><button className="editor-apply" type="submit" disabled={primaryDisabled} aria-describedby={scope === "new-folder" && step === "configure" ? "native-folder-placement-summary" : undefined}>{primaryLabel}</button></footer>
 		</form>
-		{preview ? <NetworkTitlePreview preview={preview} onClose={closePreview} onRetry={() => requestPreview(preview.network)} /> : null}
+		{preview ? <SourceTitlePreviewDialog {...titlePreview.dialogProps} titleId="network-preview-title" backdropProps={{ "data-network-preview-backdrop": "true" }} dialogProps={{ "data-network-preview": "true" }} /> : null}
 	</>;
 }

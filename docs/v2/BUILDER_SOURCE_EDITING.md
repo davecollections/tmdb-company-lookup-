@@ -1,5 +1,9 @@
 # Native Source Editing
 
+## Current native variants checkpoint - 2026-09-10
+
+Issue [#200](https://github.com/davecollections/tmdb-id-lookup/issues/200), owner-reviewed and approved on 2026-09-10, narrows duplicate checking for People, Studio and Network editors to [effective exact native variants](./BUILDER_NATIVE_VARIANTS.md). Different supported sorts may coexist. A functional change that matches an exact sibling is rejected, excluding the edited physical node. Untouched and title-only saves beside deliberate/imported duplicates remain possible. People adds Most voted; all three retain scalar **Sort titles by** and one-source Preview. Existing stale-target guards and #196 minimal patches/raw preservation remain, and sorting does not automatically rename an existing source. Other adapters' duplicate guards are unchanged.
+
 Status: merged foundation through issue [#78](https://github.com/davecollections/tmdb-id-lookup/issues/78) / PR [#79](https://github.com/davecollections/tmdb-id-lookup/pull/79); extended through Studio #92 / PR #93, Network #98 / PR #99, Streaming #104 / PR #105, official Genre #110 / PR #111, canonical Decade #113 / PR #115, and title-only TMDB Lists #170 / PR #171. Issue #158 added current-draft title Preview to the first seven adapters; issue #170 completed the eighth adapter after Worker deployment, live acceptance, owner review, publication, and merge.
 
 Last reviewed: 2026-09-06

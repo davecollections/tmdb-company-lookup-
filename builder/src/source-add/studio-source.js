@@ -1,4 +1,6 @@
 import { STUDIO_SOURCE_MODE } from "./source-modes.js";
+import { orderedSourceSortIds } from "./source-sort-variants.js";
+import { inspectNativeSourceDuplicates, isSourceVariantTitle, nativeSourceVariantKey, sourceVariantTitle } from "./native-source-variants.js";
 
 export const STUDIO_SOURCE_OPTIONS = Object.freeze([
 	Object.freeze({
@@ -138,6 +140,7 @@ export function isSupportedStudioSort(value, mediaType) {
 export function buildStudioSourceDrafts(studio, {
 	choices,
 	sortOptionId = null,
+	sortOptionIds,
 	sortBy = null,
 	titleMode = STUDIO_SOURCE_TITLE_MODES.ENTITY,
 } = {}) {
@@ -158,8 +161,9 @@ export function buildStudioSourceDrafts(studio, {
 		?? (sortBy === null
 			? DEFAULT_STUDIO_SORT_OPTION_ID
 			: selectedMediaTypes.map((mediaType) => studioSortOptionId(sortBy, mediaType)).find(Boolean) ?? null);
-	if (!STUDIO_SORT_OPTIONS.some((option) => option.id === resolvedSortOptionId)) {
-		errors.push(diagnostic("UNSUPPORTED_STUDIO_SORT", "$studio.sortBy", "Choose a supported Studio sort order."));
+	const sorts = orderedSourceSortIds(sortOptionIds, resolvedSortOptionId, STUDIO_SORT_OPTIONS);
+	if (sorts === null) {
+		errors.push(diagnostic("UNSUPPORTED_STUDIO_SORT", "$studio.sortOptionIds", Array.isArray(sortOptionIds) && sortOptionIds.length === 0 ? "Choose at least one option." : "Choose a supported Studio sort order."));
 	}
 	if (!Object.values(STUDIO_SOURCE_TITLE_MODES).includes(titleMode)) {
 		errors.push(diagnostic("UNSUPPORTED_STUDIO_TITLE_MODE", "$studio.titleMode", "Choose a supported Studio source naming mode."));
@@ -169,18 +173,18 @@ export function buildStudioSourceDrafts(studio, {
 	const selected = new Set(choices);
 	const drafts = STUDIO_SOURCE_OPTIONS
 		.filter((option) => option.supported && selected.has(option.id))
-		.map((option) => ({
+		.flatMap((option) => sorts.map((sort) => ({
 			category: STUDIO_SOURCE_MODE.category,
 			editable: {
-				title: studioSourceTitle(name, option.mediaType, titleMode),
-				sortBy: studioSortValue(resolvedSortOptionId, option.mediaType),
+				title: sourceVariantTitle(studioSourceTitle(name, option.mediaType, titleMode), sort, STUDIO_SORT_OPTIONS, sorts.length > 1),
+				sortBy: studioSortValue(sort, option.mediaType),
 				tmdbId: studio.id,
 				filters: {},
 				provider: "tmdb",
 				mediaType: option.mediaType,
 				tmdbSourceType: "COMPANY",
 			},
-		}));
+		})));
 	const validation = validateStudioSourceDrafts(drafts, { studio, titleMode });
 	return { ...validation, drafts: validation.ok ? drafts : [] };
 }
@@ -204,7 +208,7 @@ export function validateStudioSourceDraft(draft, { studio = null, titleMode = ST
 	if (!["MOVIE", "TV"].includes(editable.mediaType)) errors.push(diagnostic("UNSUPPORTED_STUDIO_MEDIA_TYPE", `${path}.editable.mediaType`, "Studio sources must use the proven COMPANY Movie or TV contract."));
 	if (id === null) errors.push(diagnostic("INVALID_STUDIO_TMDB_ID", `${path}.editable.tmdbId`, "The Studio TMDB ID must be a positive safe integer."));
 	if (!title || editable.title !== title) errors.push(diagnostic("INVALID_STUDIO_TITLE", `${path}.editable.title`, "The Studio source title must be non-empty and trimmed."));
-	if (studio !== null && (id !== studio.id || editable.title !== studioSourceTitle(name, editable.mediaType, titleMode))) {
+	if (studio !== null && (id !== studio.id || !isSourceVariantTitle(editable.title, studioSourceTitle(name, editable.mediaType, titleMode), editable.sortBy, editable.mediaType, STUDIO_SORT_OPTIONS))) {
 		errors.push(diagnostic("MISMATCHED_STUDIO_SOURCE", path, "The Studio source must match the selected cached Studio."));
 	}
 	if (!isSupportedStudioSort(editable.sortBy, editable.mediaType)) errors.push(diagnostic("INVALID_STUDIO_SORT", `${path}.editable.sortBy`, "Choose a supported Studio sort order for this media type."));
@@ -213,13 +217,16 @@ export function validateStudioSourceDraft(draft, { studio = null, titleMode = ST
 }
 
 export function validateStudioSourceDrafts(drafts, { studio = null, titleMode = STUDIO_SOURCE_TITLE_MODES.ENTITY } = {}) {
-	if (!Array.isArray(drafts) || drafts.length < 1 || drafts.length > 2) {
-		return { ok: false, errors: [diagnostic("INVALID_STUDIO_SOURCE_BUNDLE", "$studio.sources", "Studio source bundles must contain one or two sources.")] };
+	if (!Array.isArray(drafts) || drafts.length < 1 || drafts.length > STUDIO_SOURCE_OPTIONS.length * STUDIO_SORT_OPTIONS.length) {
+		return { ok: false, errors: [diagnostic("INVALID_STUDIO_SOURCE_BUNDLE", "$studio.sources", "Choose supported Studio source variants.")] };
 	}
 	const errors = drafts.flatMap((draft, index) => validateStudioSourceDraft(draft, { studio, titleMode, path: `$studio.sources[${index}]` }).errors);
-	const identities = drafts.map((draft) => studioSourceIdentity(draft?.editable));
+	const identities = drafts.map(studioSourceVariantKey);
 	if (identities.some((identity) => identity === null) || new Set(identities).size !== identities.length) {
 		errors.push(diagnostic("DUPLICATE_STUDIO_SOURCE_IDENTITY", "$studio.sources", "Studio source bundles must contain distinct supported identities."));
+	}
+	if (new Set(drafts.map((draft) => canonicalTmdbId(draft?.editable?.tmdbId))).size !== 1) {
+		errors.push(diagnostic("MIXED_STUDIO_SOURCE_BUNDLE", "$studio.sources", "Every source in a Studio bundle must use one Studio identity."));
 	}
 	return { ok: errors.length === 0, errors };
 }
@@ -234,6 +241,10 @@ export function studioSourceIdentity(editable) {
 	return `tmdb|COMPANY|${id}|${mediaType}`;
 }
 
+export function studioSourceVariantKey(source) {
+	return nativeSourceVariantKey(source, studioSourceIdentity, STUDIO_SORT_OPTIONS);
+}
+
 function findCollectionAndFolder(project, folderInternalId) {
 	for (const collection of project?.collections ?? []) {
 		const folder = collection.folders.find((entry) => entry.internalId === folderInternalId);
@@ -242,38 +253,15 @@ function findCollectionAndFolder(project, folderInternalId) {
 	return null;
 }
 
-export function inspectStudioSourceDuplicates(project, destinationFolderInternalId, studioId) {
-	const identities = new Set(["MOVIE", "TV"].map((mediaType) => `tmdb|COMPANY|${studioId}|${mediaType}`));
-	const destination = [];
-	const elsewhere = [];
-	for (const collection of project?.collections ?? []) {
-		for (const folder of collection.folders ?? []) {
-			for (const source of folder.sources ?? []) {
-				const identity = studioSourceIdentity(source?.editable);
-				if (!identities.has(identity)) continue;
-				const occurrence = Object.freeze({
-					identity,
-					mediaType: identity.endsWith("|TV") ? "TV" : "MOVIE",
-					collectionInternalId: collection.internalId,
-					collectionTitle: canonicalText(collection.editable?.title),
-					folderInternalId: folder.internalId,
-					folderTitle: canonicalText(folder.editable?.title),
-					sourceInternalId: source.internalId,
-					sourceTitle: canonicalText(source.editable?.title),
-				});
-				if (folder.internalId === destinationFolderInternalId) destination.push(occurrence);
-				else elsewhere.push(occurrence);
-			}
-		}
-	}
-	return Object.freeze({ destination: Object.freeze(destination), elsewhere: Object.freeze(elsewhere) });
+export function inspectStudioSourceDuplicates(project, destinationFolderInternalId, drafts) {
+	return inspectNativeSourceDuplicates(project, destinationFolderInternalId, drafts, studioSourceVariantKey);
 }
 
 export function studioDuplicateOverrideIdentity(folderInternalId, drafts) {
 	if (typeof folderInternalId !== "string" || !folderInternalId) return null;
 	const validation = validateStudioSourceDrafts(drafts);
 	if (!validation.ok) return null;
-	return `${folderInternalId}\n${drafts.map((draft) => studioSourceIdentity(draft.editable)).join("\n")}`;
+	return `${folderInternalId}\n${drafts.map(studioSourceVariantKey).join("\n")}`;
 }
 
 export function createStudioSourceBundle(controller, {
@@ -293,14 +281,14 @@ export function createStudioSourceBundle(controller, {
 	if (!location || state.selection.folderInternalId !== folderInternalId) {
 		return { ok: false, errors: [diagnostic("STUDIO_FOLDER_UNAVAILABLE", "$studio.destination", "The selected destination folder is no longer available.")], warnings: [] };
 	}
-	const duplicateReview = inspectStudioSourceDuplicates(state.project, folderInternalId, studio.id);
+	const duplicateReview = inspectStudioSourceDuplicates(state.project, folderInternalId, drafts);
 	const destinationIdentities = new Set(duplicateReview.destination.map((entry) => entry.identity));
 	const override = studioDuplicateOverrideIdentity(folderInternalId, drafts);
-	const addAll = drafts.some((draft) => destinationIdentities.has(studioSourceIdentity(draft.editable)))
+	const addAll = drafts.some((draft) => destinationIdentities.has(studioSourceVariantKey(draft)))
 		&& duplicateOverrideIdentity === override;
 	const draftsToAdd = addAll
 		? drafts
-		: drafts.filter((draft) => !destinationIdentities.has(studioSourceIdentity(draft.editable)));
+		: drafts.filter((draft) => !destinationIdentities.has(studioSourceVariantKey(draft)));
 	if (draftsToAdd.length === 0) {
 		return { ok: false, requiresDuplicateOverride: true, errors: [diagnostic("STUDIO_SOURCES_ALREADY_EXIST", "$studio.sources", "Every selected Studio source already exists in this folder.")], warnings: [], duplicateReview };
 	}

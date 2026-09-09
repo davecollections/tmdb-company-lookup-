@@ -11,6 +11,7 @@ import {
 	diagnostic,
 	validateTouchedSourceTitle,
 } from "./source-edit-utils.js";
+import { peopleSourceVariantKey } from "../source-add/person-source.js";
 
 export { PEOPLE_SOURCE_SORT_OPTIONS, isVerifiedPeopleSort, peopleSortOptions };
 
@@ -127,6 +128,7 @@ export const peopleSourceEditor = Object.freeze({
 			) !== null;
 	},
 	identity: peopleSourceIdentity,
+	duplicateKey: peopleSourceVariantKey,
 	readInitialState,
 	validateDraft,
 	draftIdentity,

@@ -159,12 +159,12 @@ test("Studio Configure presents independent counts and compact semantic sort cho
 	assert.ok(markup.includes("17 series"));
 	assert.equal(markup.includes("Not available yet"), false);
 	assert.equal(markup.includes("Refresh title count"), false);
-	assert.ok(markup.includes("Sort titles by"));
+	assert.ok(markup.includes("Sources to create"));
 	assert.ok(markup.includes("Popular"));
 	assert.ok(markup.includes("Recent"));
 	assert.ok(markup.includes("Top rated"));
 	assert.ok(markup.includes("Most voted"));
-	assert.ok(markup.includes("Popular titles first."));
+	assert.ok(markup.includes("Selected: Popular"));
 	assert.equal(markup.includes("Recently released titles first."), false);
 	assert.equal(markup.includes("Highest-rated titles first."), false);
 	assert.equal(markup.includes("Titles with the most votes first."), false);
@@ -172,10 +172,10 @@ test("Studio Configure presents independent counts and compact semantic sort cho
 	assert.ok(markup.includes('target="_blank"'));
 	assert.ok(markup.includes('rel="noopener noreferrer"'));
 	assert.ok(markup.includes("Open Pixar on TMDB"));
-	assert.equal((markup.match(/type="checkbox"/g) ?? []).length, 2);
+	assert.equal((markup.match(/type="checkbox"/g) ?? []).length, 6);
 	assert.equal((markup.match(/class="visually-hidden choice-card-input" type="checkbox"/g) ?? []).length, 2);
 	assert.doesNotMatch(markup, /selectable-card-indicator|✓/);
-	assert.equal((markup.match(/type="radio"/g) ?? []).length, 4);
+	assert.equal((markup.match(/type="radio"/g) ?? []).length, 0);
 	assert.equal((markup.match(/disabled=""/g) ?? []).length, 0);
 	assert.equal((markup.match(/checked=""/g) ?? []).length, 2);
 	assert.equal(markup.includes("<select"), false);
@@ -398,27 +398,28 @@ test("partial and full Studio duplicate notices name exact identities and expose
 	const markup = renderConfigure({
 		choices: ["studio-series"],
 		duplicateReview: {
-			destination: [{ identity: "tmdb|COMPANY|3|MOVIE", mediaType: "MOVIE" }],
+			destination: [{ identity: "tmdb|COMPANY|3|MOVIE", mediaType: "MOVIE" }], duplicateDrafts: [{}],
 			elsewhere: [{ identity: "tmdb|COMPANY|3|TV", mediaType: "TV", collectionInternalId: "collection-tv", collectionTitle: "TV", folderInternalId: "folder-animation", folderTitle: "Animation" }],
 		},
 	});
-	assert.ok(markup.includes("studio-already-added"));
-	assert.ok(markup.includes("Movies already exist. Add will only include Series."));
+	assert.equal(markup.includes("studio-already-added"), false);
+	assert.equal((markup.match(/disabled=""/g) ?? []).length, 0);
+	assert.ok(markup.includes("1 configured source is already in this folder. Add includes only missing variants."));
 	assert.equal(markup.includes("Already in this folder"), false);
 	assert.ok(markup.includes("This source exists elsewhere"));
 	assert.ok(markup.includes("Animation · in TV"));
 	assert.ok(markup.includes("You can still add it to this folder, or close this window to cancel."));
-	assert.ok(markup.indexOf("Movies already exist") < markup.indexOf("This source exists elsewhere"));
-	assert.equal((markup.match(/data-source-duplicate="true"/g) ?? []).length, 1);
+	assert.ok(markup.indexOf("1 configured source") < markup.indexOf("This source exists elsewhere"));
+	assert.equal((markup.match(/data-source-duplicate="true"/g) ?? []).length, 0);
 	const partialActions = renderToStaticMarkup(createElement(StudioConfigureActions, {
 		hasDestinationDuplicates: true, primaryCount: 1, configuredCount: 2, onAddAll() {},
 	}));
 	assert.ok(partialActions.includes(">Add 1 source</button>"));
 	assert.ok(partialActions.includes(">Add all anyway</button>"));
 	const fullNotice = renderToStaticMarkup(createElement(StudioDuplicateNotice, {
-		duplicateReview: { destination: [{ mediaType: "MOVIE" }, { mediaType: "TV" }], elsewhere: [] },
+		duplicateReview: { destination: [{ mediaType: "MOVIE" }, { mediaType: "TV" }], elsewhere: [], duplicateDrafts: [{}, {}] },
 	}));
-	assert.ok(fullNotice.includes("Movies and Series already exist in this folder."));
+	assert.ok(fullNotice.includes("2 configured sources are already in this folder."));
 	const fullActions = renderToStaticMarkup(createElement(StudioConfigureActions, {
 		hasDestinationDuplicates: true, primaryCount: 0, configuredCount: 2, onAddAll() {},
 	}));
@@ -469,14 +470,14 @@ test("Studio elsewhere notice uses display-only hidden title fallbacks and remai
 	assert.equal(configure.includes("people-elsewhere-note"), false);
 });
 
-test("Studio sort UI is compact, icon-free, and shows one selected description", () => {
+test("Studio creation sorting is compact, icon-free and summarizes selected options", () => {
 	const markup = renderConfigure();
 	const source = read("builder/src/ui/StudioSortChoices.jsx");
 	const styles = read("builder/src/styles.css");
 	assert.ok(markup.includes("studio-sort-choice-row"));
-	assert.equal((markup.match(/type="radio"/g) ?? []).length, 4);
+	assert.equal((markup.match(/type="radio"/g) ?? []).length, 0);
 	for (const label of ["Popular", "Recent", "Top rated", "Most voted"]) assert.ok(markup.includes(`>${label}<`), label);
-	assert.equal((markup.match(/studio-sort-description/g) ?? []).length, 1);
+	assert.equal((markup.match(/studio-sort-description/g) ?? []).length, 0);
 	assert.equal(source.includes("<svg"), false);
 	assert.equal(source.includes("<img"), false);
 	assert.equal(styles.includes("studio-sort-cards"), false);

@@ -114,7 +114,7 @@ test("Genre Browse is local, searchable and uses a compact 27-item selection sum
 	const allMarkup = browseMarkup({ selection: ["Comedy", "Horror"] });
 	assert.equal((allMarkup.match(/data-genre-name=/g) ?? []).length, 27);
 	assert.ok(allMarkup.indexOf('data-genre-name="Action"') < allMarkup.indexOf('data-genre-name="Western"'));
-	assert.ok(allMarkup.includes("Movies &amp; Series"));
+	assert.ok(allMarkup.includes("Movies + Series"));
 	assert.ok(allMarkup.includes("2 of 27 selected"));
 	assert.ok(allMarkup.includes("Select all"));
 	assert.ok(allMarkup.includes("Clear all"));

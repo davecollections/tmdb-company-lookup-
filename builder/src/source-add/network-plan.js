@@ -1,3 +1,5 @@
+import { orderedSourceSortIds } from "./source-sort-variants.js";
+import { inspectNativeHierarchyPlacement, nativeHierarchyCounts, resolveNativeHierarchyPlacements } from "./native-source-variants.js";
 import { isInvisibleNuvioTitle, NUVIO_INVISIBLE_TITLE } from "../nuvio/titles.js";
 import { normalizeHierarchyShowAllTab } from "./hierarchy-presentation.js";
 import {
@@ -5,17 +7,19 @@ import {
 	NETWORK_ARTWORK_ORIENTATIONS,
 } from "./network-folder-artwork.js";
 import {
-	buildNetworkHierarchySourceDraft,
+	buildNetworkSourceDrafts,
 	DEFAULT_NETWORK_SORT_OPTION_ID,
 	networkSourceIdentity,
+	networkSourceVariantKey,
 	NETWORK_SORT_OPTIONS,
-	validateNetworkHierarchySourceDraft,
+	validateNetworkSourceDrafts,
 } from "./network-source.js";
 
 export const NETWORK_HIERARCHY_PLAN_TYPE = "network-hierarchy-plan";
 export const NETWORK_CREATION_SCOPES = Object.freeze(["new-collection", "new-folder"]);
 export const NETWORK_PLACEMENT_STATUSES = Object.freeze({
 	READY: "ready-to-create",
+	PARTLY_IN_COLLECTION: "partly-in-this-collection",
 	ALREADY_IN_COLLECTION: "already-in-this-collection",
 	EXISTS_ELSEWHERE: "exists-elsewhere",
 });
@@ -23,6 +27,7 @@ export const DEFAULT_NETWORK_COLLECTION_TITLE = "Networks";
 export const DEFAULT_NETWORK_FOLDER_TITLE_VISIBILITY = "SHOW_EVERYWHERE";
 
 const OPTION_KEYS = new Set([
+	"folderDestinations",
 	"scope",
 	"projectRevision",
 	"destinationCollectionInternalId",
@@ -34,6 +39,7 @@ const OPTION_KEYS = new Set([
 	"folderTitleVisibility",
 	"artworkOrientation",
 	"sortOptionId",
+	"sortOptionIds",
 	"networks",
 ]);
 const COLLECTION_VIEW_MODES = new Set(["TABBED_GRID", "ROWS"]);
@@ -77,7 +83,7 @@ function validArtwork(artwork, networkId, orientation) {
 	return validHttpsUrl(editable.coverImageUrl);
 }
 
-function normalizeNetworkEntry(entry, index, { artworkOrientation, sortOptionId }, errors) {
+function normalizeNetworkEntry(entry, index, { artworkOrientation, sortOptionIds }, errors) {
 	const network = entry?.network;
 	const name = canonicalText(network?.name);
 	if (
@@ -93,12 +99,12 @@ function normalizeNetworkEntry(entry, index, { artworkOrientation, sortOptionId 
 		errors.push(diagnostic("INVALID_NETWORK_PLAN_ARTWORK", `$networkPlan.networks[${index}].artwork`, "Each Network folder needs resolved artwork in the requested orientation or the approved fallback."));
 		return null;
 	}
-	const sourceResult = buildNetworkHierarchySourceDraft(network, { sortOptionId });
+	const sourceResult = buildNetworkSourceDrafts(network, { sortOptionIds, hierarchy: true });
 	if (!sourceResult.ok) {
 		errors.push(...sourceResult.errors);
 		return null;
 	}
-	const validation = validateNetworkHierarchySourceDraft(sourceResult.draft, { network });
+	const validation = validateNetworkSourceDrafts(sourceResult.drafts, { network, hierarchy: true });
 	if (!validation.ok) {
 		errors.push(...validation.errors);
 		return null;
@@ -106,50 +112,16 @@ function normalizeNetworkEntry(entry, index, { artworkOrientation, sortOptionId 
 	return Object.freeze({
 		network: Object.freeze({ id: network.id, name }),
 		artwork: Object.freeze({ ...entry.artwork, folderEditable: Object.freeze({ ...entry.artwork.folderEditable }) }),
-		draft: Object.freeze({
-			category: sourceResult.draft.category,
-			editable: Object.freeze({ ...sourceResult.draft.editable, filters: Object.freeze({}) }),
-		}),
+		drafts: Object.freeze(sourceResult.drafts.map((draft) => Object.freeze({ category: draft.category, editable: Object.freeze({ ...draft.editable, filters: Object.freeze({}) }) }))),
 	});
 }
 
-function sourceOccurrences(project, identity) {
-	const occurrences = [];
-	for (const collection of project?.collections ?? []) {
-		for (const folder of collection.folders ?? []) {
-			for (const source of folder.sources ?? []) {
-				if (networkSourceIdentity(source.editable) !== identity) continue;
-				occurrences.push(Object.freeze({
-					identity,
-					collectionInternalId: collection.internalId,
-					collectionTitle: canonicalText(collection.editable?.title),
-					folderInternalId: folder.internalId,
-					folderTitle: canonicalText(folder.editable?.title),
-					sourceInternalId: source.internalId,
-					sourceTitle: canonicalText(source.editable?.title),
-				}));
-			}
-		}
-	}
-	return Object.freeze(occurrences);
-}
-
-export function inspectNetworkHierarchyPlacement(project, draft, { destinationCollectionInternalId = null } = {}) {
-	const identity = networkSourceIdentity(draft?.editable);
-	if (identity === null) return null;
-	const occurrences = sourceOccurrences(project, identity);
-	const destination = destinationCollectionInternalId === null
-		? Object.freeze([])
-		: Object.freeze(occurrences.filter((entry) => entry.collectionInternalId === destinationCollectionInternalId));
-	const elsewhere = destinationCollectionInternalId === null
-		? occurrences
-		: Object.freeze(occurrences.filter((entry) => entry.collectionInternalId !== destinationCollectionInternalId));
-	const status = destination.length > 0
-		? NETWORK_PLACEMENT_STATUSES.ALREADY_IN_COLLECTION
-		: elsewhere.length > 0
-			? NETWORK_PLACEMENT_STATUSES.EXISTS_ELSEWHERE
-			: NETWORK_PLACEMENT_STATUSES.READY;
-	return Object.freeze({ identity, status, destination, elsewhere });
+export function inspectNetworkHierarchyPlacement(project, candidate, { destinationCollectionInternalId = null } = {}) {
+	const drafts = Array.isArray(candidate) ? candidate : [candidate];
+	const placement = inspectNativeHierarchyPlacement(project, drafts, {
+		destinationCollectionInternalId, structuralIdentity: networkSourceIdentity, variantKey: networkSourceVariantKey,
+	});
+	return placement;
 }
 
 function titleCollisions(project, title) {
@@ -164,15 +136,6 @@ function folderEditable(entry, folderTitleVisibility, artworkOrientation) {
 		tileShape: artworkOrientation,
 		hideTitle: folderTitleVisibility !== "SHOW_EVERYWHERE",
 		...entry.artwork.folderEditable,
-	});
-}
-
-function deriveCounts(collections, folders) {
-	const createdFolders = [...collections.flatMap((collection) => collection.folders), ...folders];
-	return Object.freeze({
-		collectionCount: collections.length,
-		folderCount: createdFolders.length,
-		sourceCount: createdFolders.reduce((total, folder) => total + folder.sources.length, 0),
 	});
 }
 
@@ -192,13 +155,13 @@ export function createNetworkHierarchyPlan(project, options) {
 	if (scope === null) errors.push(diagnostic("INVALID_NETWORK_PLAN_SCOPE", "$networkPlan.scope", "Choose New Collection or New Folder scope."));
 	const artworkOrientation = options.artworkOrientation ?? DEFAULT_NETWORK_ARTWORK_ORIENTATION;
 	if (!ARTWORK_ORIENTATIONS.has(artworkOrientation)) errors.push(diagnostic("INVALID_NETWORK_PLAN_ARTWORK_ORIENTATION", "$networkPlan.artworkOrientation", "Choose Poster or Landscape Network artwork."));
-	const sortOptionId = options.sortOptionId ?? DEFAULT_NETWORK_SORT_OPTION_ID;
-	if (!NETWORK_SORT_OPTIONS.some((entry) => entry.id === sortOptionId)) errors.push(diagnostic("INVALID_NETWORK_PLAN_SORT", "$networkPlan.sortOptionId", "Choose a supported Network sort."));
+	const sortOptionIds = orderedSourceSortIds(options.sortOptionIds, options.sortOptionId ?? DEFAULT_NETWORK_SORT_OPTION_ID, NETWORK_SORT_OPTIONS);
+	if (sortOptionIds === null) errors.push(diagnostic("INVALID_NETWORK_PLAN_SORT", "$networkPlan.sortOptionId", "Choose at least one option."));
 	if (!Array.isArray(options.networks) || options.networks.length < 1) {
 		errors.push(diagnostic("NETWORK_PLAN_SELECTION_REQUIRED", "$networkPlan.networks", "Choose at least one Network."));
 	}
 	const entries = Array.isArray(options.networks) && ARTWORK_ORIENTATIONS.has(artworkOrientation)
-		? options.networks.map((entry, index) => normalizeNetworkEntry(entry, index, { artworkOrientation, sortOptionId }, errors)).filter(Boolean)
+		? options.networks.map((entry, index) => normalizeNetworkEntry(entry, index, { artworkOrientation, sortOptionIds }, errors)).filter(Boolean)
 		: [];
 	if (new Set(entries.map((entry) => entry.network.id)).size !== entries.length) {
 		errors.push(diagnostic("DUPLICATE_NETWORK_PLAN_SELECTION", "$networkPlan.networks", "Each Network may appear only once."));
@@ -234,18 +197,19 @@ export function createNetworkHierarchyPlan(project, options) {
 	if (errors.length > 0) return Object.freeze({ ok: false, plan: null, errors: Object.freeze(errors) });
 
 	const evaluated = entries.map((entry) => {
-		const outcome = inspectNetworkHierarchyPlacement(project, entry.draft, { destinationCollectionInternalId: destinationCollection?.internalId ?? null });
+		const outcome = inspectNetworkHierarchyPlacement(project, entry.drafts, { destinationCollectionInternalId: destinationCollection?.internalId ?? null });
 		return Object.freeze({
 			networkId: entry.network.id,
 			networkName: entry.network.name,
 			editable: folderEditable(entry, folderTitleVisibility, artworkOrientation),
-			sources: Object.freeze([Object.freeze({ draft: entry.draft })]),
+			sources: Object.freeze(entry.drafts.map((draft) => Object.freeze({ draft }))),
 			outcome,
 		});
 	});
-	const readyFolders = scope === "new-folder"
-		? evaluated.filter((folder) => folder.outcome.status !== NETWORK_PLACEMENT_STATUSES.ALREADY_IN_COLLECTION)
-		: evaluated;
+	const placement = resolveNativeHierarchyPlacements(evaluated, destinationCollection?.internalId ?? null, options.folderDestinations);
+	if (!placement) return Object.freeze({ ok: false, plan: null, errors: Object.freeze([diagnostic("INVALID_NATIVE_FOLDER_DESTINATION", "$plan.folderDestinations", "Choose a current matching folder for the new sources.")]) });
+	const { placed, existingFolderAdditions } = placement;
+	const readyFolders = placement.folders;
 	const collections = scope === "new-collection" ? Object.freeze([Object.freeze({
 		editable: Object.freeze({
 			title: hideCollectionTitle ? NUVIO_INVISIBLE_TITLE : collectionTitle,
@@ -255,7 +219,7 @@ export function createNetworkHierarchyPlan(project, options) {
 			showAllTab,
 		}),
 		titleCollisions: hideCollectionTitle ? Object.freeze([]) : titleCollisions(project, collectionTitle),
-		folders: Object.freeze(evaluated),
+		folders: Object.freeze(placed),
 	})]) : Object.freeze([]);
 	const folders = scope === "new-folder" ? Object.freeze(readyFolders) : Object.freeze([]);
 	const destination = destinationCollection === null ? null : Object.freeze({
@@ -269,7 +233,7 @@ export function createNetworkHierarchyPlan(project, options) {
 	const plan = Object.freeze({
 		planType: NETWORK_HIERARCHY_PLAN_TYPE,
 		captured: Object.freeze({ projectInternalId: project.internalId, projectRevision: options.projectRevision }),
-		configuration: Object.freeze({
+		configuration: Object.freeze({ folderDestinations: Object.freeze({ ...(options.folderDestinations ?? {}) }),
 			scope,
 			collectionTitle,
 			hideCollectionTitle,
@@ -278,14 +242,15 @@ export function createNetworkHierarchyPlan(project, options) {
 			pinToTop,
 			folderTitleVisibility,
 			artworkOrientation,
-			sortOptionId,
+			sortOptionIds,
 			networks: Object.freeze(entries.map((entry) => Object.freeze({ network: entry.network, artwork: entry.artwork }))),
 		}),
 		destination,
 		collections,
 		folders,
-		outcomes: Object.freeze(evaluated.map((folder) => folder.outcome)),
-		counts: deriveCounts(collections, folders),
+		existingFolderAdditions,
+		outcomes: Object.freeze(placed.map((folder) => folder.outcome)),
+		counts: nativeHierarchyCounts(collections, folders, placed, existingFolderAdditions),
 	});
 	return Object.freeze({ ok: true, plan, errors: Object.freeze([]) });
 }
@@ -293,6 +258,7 @@ export function createNetworkHierarchyPlan(project, options) {
 function rebuildOptions(plan) {
 	return {
 		scope: plan.configuration.scope,
+		folderDestinations: plan.configuration.folderDestinations,
 		projectRevision: plan.captured.projectRevision,
 		...(plan.destination ? { destinationCollectionInternalId: plan.destination.collectionInternalId } : {}),
 		...(plan.configuration.scope === "new-collection" ? {
@@ -304,13 +270,13 @@ function rebuildOptions(plan) {
 		} : {}),
 		folderTitleVisibility: plan.configuration.folderTitleVisibility,
 		artworkOrientation: plan.configuration.artworkOrientation,
-		sortOptionId: plan.configuration.sortOptionId,
+		sortOptionIds: plan.configuration.sortOptionIds,
 		networks: plan.configuration.networks,
 	};
 }
 
 function comparablePlan(plan) {
-	return JSON.stringify({ configuration: plan.configuration, destination: plan.destination, collections: plan.collections, folders: plan.folders, outcomes: plan.outcomes, counts: plan.counts });
+	return JSON.stringify({ configuration: plan.configuration, destination: plan.destination, collections: plan.collections, folders: plan.folders, existingFolderAdditions: plan.existingFolderAdditions, outcomes: plan.outcomes, counts: plan.counts });
 }
 
 export function validateNetworkHierarchyPlan(plan, { project, projectRevision } = {}) {
@@ -333,13 +299,13 @@ export function applyNetworkHierarchyPlan(controller, plan) {
 	const state = controller.getState();
 	const validation = validateNetworkHierarchyPlan(plan, { project: state.project, projectRevision: state.revision });
 	if (!validation.ok) return Object.freeze({ ok: false, stale: validation.stale, errors: validation.errors, warnings: Object.freeze([]) });
-	if (plan.counts.folderCount === 0) return Object.freeze({ ok: false, errors: Object.freeze([diagnostic("NO_NETWORK_FOLDERS_READY", "$networkPlan.folders", "No new Network folders are ready to create here.")]), warnings: Object.freeze([]) });
+	if (plan.counts.sourceCount === 0 || plan.counts.unresolvedEntityCount > 0) return Object.freeze({ ok: false, errors: Object.freeze([diagnostic("NO_NETWORK_SOURCES_READY", "$networkPlan.folders", "Choose missing sources and resolve their destination folders.")]), warnings: Object.freeze([]) });
 	const bundlesFor = (folders) => folders.map((folder) => ({
 		folder: { editable: folder.editable },
 		sources: folder.sources.map((source) => source.draft),
 	}));
 	const result = plan.configuration.scope === "new-collection"
 		? controller.createCollectionsWithFoldersAndSources({ bundles: plan.collections.map((collection) => ({ collection: { editable: collection.editable }, folders: bundlesFor(collection.folders) })) })
-		: controller.createFoldersWithSources(plan.destination.collectionInternalId, { bundles: bundlesFor(plan.folders) });
+		: controller.extendCollectionWithFoldersAndSources(plan.destination.collectionInternalId, { newFolders: bundlesFor(plan.folders), existingFolderAdditions: plan.existingFolderAdditions.map((addition) => ({ folderInternalId: addition.folderInternalId, sources: addition.sources.map((source) => source.draft) })) });
 	return result.ok ? { ...result, counts: plan.counts } : result;
 }

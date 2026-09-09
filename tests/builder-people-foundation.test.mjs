@@ -46,6 +46,7 @@ import {
 	personArtworkOrientation,
 	personCountDisplayState,
 	peopleSourceIdentity,
+	peopleSourceVariantKey,
 	peopleSourceTitle,
 	peopleSortOptionId,
 	peopleSortValue,
@@ -244,13 +245,14 @@ test("manual combination choices persist across refreshed person details", () =>
 	assert.equal(validatePeopleCombinationSelection([]).ok, false);
 });
 
-test("People creation reuses exactly the three verified semantic sorts while identity deliberately excludes sort", () => {
+test("People creation reuses the four verified semantic sorts while identity deliberately excludes sort", () => {
 	assert.equal(DEFAULT_PEOPLE_SOURCE_SORT_OPTION_ID, "popular");
-	assert.deepEqual(PEOPLE_SOURCE_SORT_OPTIONS.map((option) => option.label), ["Popular", "Recent", "Top rated"]);
+	assert.deepEqual(PEOPLE_SOURCE_SORT_OPTIONS.map((option) => option.label), ["Popular", "Recent", "Top rated", "Most voted"]);
 	const expected = {
 		popular: ["popularity.desc", "popularity.desc"],
 		recent: ["primary_release_date.desc", "first_air_date.desc"],
 		"top-rated": ["vote_average.desc", "vote_average.desc"],
+		"most-votes": ["vote_count.desc", "vote_count.desc"],
 	};
 	for (const option of PEOPLE_SOURCE_SORT_OPTIONS) {
 		const built = buildPeopleSourceDrafts({ id: 31, name: "Tom Hanks" }, { combinations: ["acting-movies", "acting-series"], sortOptionId: option.id });
@@ -259,7 +261,7 @@ test("People creation reuses exactly the three verified semantic sorts while ide
 		assert.equal(peopleSortValue(option.id, "MOVIE"), expected[option.id][0]);
 		assert.equal(peopleSortOptionId(expected[option.id][1], "TV"), option.id);
 	}
-	assert.equal(buildPeopleSourceDrafts({ id: 31, name: "Tom Hanks" }, { combinations: ["acting-movies"], sortOptionId: "most-votes" }).ok, false);
+	assert.equal(buildPeopleSourceDrafts({ id: 31, name: "Tom Hanks" }, { combinations: ["acting-movies"], sortOptionId: "most-votes" }).ok, true);
 	const popular = buildPeopleSourceDrafts({ id: 31, name: "Tom Hanks" }, { combinations: ["acting-movies"], sortOptionId: "popular" }).drafts[0];
 	const recent = buildPeopleSourceDrafts({ id: 31, name: "Tom Hanks" }, { combinations: ["acting-movies"], sortOptionId: "recent" }).drafts[0];
 	assert.notEqual(popular.editable.sortBy, recent.editable.sortBy);
@@ -325,7 +327,7 @@ test("poster-only People previews separate media, combine selected roles, dedupl
 	assert.deepEqual(peoplePreviewMediaTypes([]), []);
 	const popularMovies = buildPeopleTitlePreview(person, { combinations, sortOptionId: "popular", limit: 10, mediaType: "MOVIE" });
 	assert.equal(popularMovies.mediaType, "MOVIE");
-	assert.equal(popularMovies.totalResults, 2);
+	assert.equal(popularMovies.totalResults, 3);
 	assert.deepEqual(popularMovies.items.map((item) => item.id), [4, 1]);
 	assert.deepEqual(buildPeopleTitlePreview(person, { combinations, sortOptionId: "recent", limit: 10, mediaType: "MOVIE" }).items.map((item) => item.id), [4, 1]);
 	assert.deepEqual(buildPeopleTitlePreview(person, { combinations, sortOptionId: "top-rated", limit: 10, mediaType: "MOVIE" }).items.map((item) => item.id), [4, 1]);
@@ -411,8 +413,8 @@ test("duplicate review separates destination conflicts from informational elsewh
 	}]).ok, true);
 	const folders = controller.getState().project.collections[0].folders;
 	const review = inspectPeopleSourceDuplicates(controller.getState().project, folders[0].internalId, canonicalDrafts());
-	assert.deepEqual(review.destination.map((entry) => entry.identity), ["tmdb|PERSON|31|MOVIE"]);
-	assert.deepEqual(review.elsewhere.map((entry) => entry.identity), ["tmdb|DIRECTOR|31|TV"]);
+	assert.deepEqual(review.destination.map((entry) => entry.identity), [peopleSourceVariantKey(canonicalDrafts()[0])]);
+	assert.deepEqual(review.elsewhere.map((entry) => entry.identity), [peopleSourceVariantKey(canonicalDrafts()[3])]);
 	assert.equal(review.missingDrafts.length, 3);
 });
 

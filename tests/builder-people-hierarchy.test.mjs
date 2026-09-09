@@ -203,7 +203,7 @@ test("People New Collection plan preserves order, canonical naming, source seman
 		{ title: "Orson Welles", hideTitle: true },
 	]);
 	assert.deepEqual(result.plan.collections[0].folders[1].sources.map((entry) => entry.draft.editable.title), ["Movie Credits", "Directed Movies"]);
-	assert.deepEqual(result.plan.counts, { collectionCount: 1, folderCount: 2, sourceCount: 4 });
+	assert.deepEqual(result.plan.counts, { collectionCount: 1, folderCount: 2, sourceCount: 4, configured: 4, existing: 0, toAdd: 4, newFolderSourceCount: 4, appendedSourceCount: 0, existingFolderAdditionCount: 0, unresolvedEntityCount: 0, unresolvedSourceCount: 0, unchangedEntityCount: 0 });
 });
 
 test("People hidden collection output does not require its remembered visible title draft", () => {
@@ -307,7 +307,7 @@ test("People folder appearance applies canonical Landscape artwork without chang
 	assert.equal(editDraft.values.focusGifEnabled, true);
 });
 
-test("People hierarchy plans preserve the chosen shared semantic sort without changing duplicate identity", () => {
+test("People hierarchy plans preserve the chosen semantic sort in exact duplicate comparison", () => {
 	const app = controller();
 	const state = app.getState();
 	const entry = planEntry({ id: 31, name: "Tom Hanks" }, ["acting-movies", "acting-series"], "recent");
@@ -316,7 +316,7 @@ test("People hierarchy plans preserve the chosen shared semantic sort without ch
 	const plannedDrafts = result.plan.collections[0].folders[0].sources.map((source) => source.draft);
 	assert.deepEqual(plannedDrafts.map((draft) => draft.editable.sortBy), ["primary_release_date.desc", "first_air_date.desc"]);
 	assert.equal(validatePeopleHierarchyPlan(result.plan, { project: state.project, projectRevision: state.revision }).ok, true);
-	assert.deepEqual(
+	assert.notDeepEqual(
 		plannedDrafts.map((draft) => inspectPeopleHierarchyPlacement(state.project, [draft]).sourceOutcomes[0].identity),
 		drafts({ id: 31, name: "Tom Hanks" }, ["acting-movies", "acting-series"], "popular").map((draft) => inspectPeopleHierarchyPlacement(state.project, [draft]).sourceOutcomes[0].identity),
 	);
@@ -355,7 +355,7 @@ test("a 120-person hierarchy plans and applies atomically in one revision with n
 	const people = Array.from({ length: 120 }, (_, index) => planEntry({ id: index + 1, name: `Person ${index + 1}` }, ["acting-movies"]));
 	const result = createPeopleHierarchyPlan(state.project, { scope: "new-collection", projectRevision: state.revision, people });
 	assert.equal(result.ok, true);
-	assert.deepEqual(result.plan.counts, { collectionCount: 1, folderCount: 120, sourceCount: 120 });
+	assert.deepEqual(result.plan.counts, { collectionCount: 1, folderCount: 120, sourceCount: 120, configured: 120, existing: 0, toAdd: 120, newFolderSourceCount: 120, appendedSourceCount: 0, existingFolderAdditionCount: 0, unresolvedEntityCount: 0, unresolvedSourceCount: 0, unchangedEntityCount: 0 });
 	const beforeRevision = app.getState().revision;
 	const applied = applyPeopleHierarchyPlan(app, result.plan);
 	assert.equal(applied.ok, true);

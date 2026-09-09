@@ -3,6 +3,7 @@ import {
 	isSupportedStudioSort,
 	studioSortOptionId,
 	studioSourceIdentity,
+	studioSourceVariantKey,
 } from "../source-add/index.js";
 import {
 	canonicalPositiveId,
@@ -82,10 +83,10 @@ export const studioSourceEditor = Object.freeze({
 	id: STUDIO_SOURCE_EDITOR_ID,
 	label: "Studio",
 	ownedFields: Object.freeze(["title", "sortBy"]),
-	checkCurrentIdentityDuplicates: true,
+	duplicateKey: studioSourceVariantKey,
 	duplicateMessage(draft) {
 		const media = draft?.mediaType === "TV" ? "Series" : "Movies";
-		return `This folder already contains another Studio source for ${media}. Remove the duplicate or cancel your changes.`;
+		return `This folder already contains this Studio sorting option for ${media}. Choose another sorting option or cancel your changes.`;
 	},
 	canEdit(source) {
 		return source?.nodeType === "source"

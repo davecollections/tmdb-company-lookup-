@@ -265,6 +265,7 @@ export {
 export {
 	buildNetworkHierarchySourceDraft,
 	buildNetworkSourceDraft,
+	buildNetworkSourceDrafts,
 	createNetworkSource,
 	DEFAULT_NETWORK_SORT,
 	DEFAULT_NETWORK_SORT_OPTION_ID,
@@ -274,9 +275,11 @@ export {
 	networkSortOptionId,
 	networkSortValue,
 	networkSourceIdentity,
+	networkSourceVariantKey,
 	NETWORK_SORT_OPTIONS,
 	validateNetworkHierarchySourceDraft,
 	validateNetworkSourceDraft,
+	validateNetworkSourceDrafts,
 } from "./network-source.js";
 export {
 	DEFAULT_NETWORK_ARTWORK_ORIENTATION,
@@ -469,6 +472,7 @@ export {
 	studioSortValue,
 	studioDuplicateOverrideIdentity,
 	studioSourceIdentity,
+	studioSourceVariantKey,
 	studioSourceTitle,
 	STUDIO_MOVIE_SORT_OPTIONS,
 	STUDIO_SORT_OPTIONS,
@@ -560,6 +564,7 @@ export {
 	peopleTitlePreviewLimit,
 	peopleSourceTitle,
 	peopleSourceIdentity,
+	peopleSourceVariantKey,
 	resolvePeopleConfigurationForMode,
 	updatePeopleConfiguration,
 	validatePeopleCombinationSelection,

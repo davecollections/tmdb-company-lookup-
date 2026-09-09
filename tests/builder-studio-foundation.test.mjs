@@ -652,7 +652,7 @@ test("Studio duplicate identity is media-specific and normalizes imported casing
 		{ provider: "TMDB", title: "Existing movies", tmdbSourceType: "company", tmdbId: "3", mediaType: "movie" },
 		{ provider: "tmdb", title: "Existing series", tmdbSourceType: "COMPANY", tmdbId: 3, mediaType: "TV" },
 	] });
-	const review = inspectStudioSourceDuplicates(controller.getState().project, folder.internalId, 3);
+	const review = inspectStudioSourceDuplicates(controller.getState().project, folder.internalId, buildStudioSourceDrafts({ id: 3, name: "Pixar" }, { choices: ["studio-movies", "studio-series"] }).drafts);
 	assert.deepEqual(review.destination.map((entry) => entry.mediaType), ["MOVIE", "TV"]);
 	assert.notEqual(review.destination[0].identity, review.destination[1].identity);
 	assert.deepEqual(review.destination.map((entry) => [entry.collectionTitle, entry.folderTitle]), [["Studios", "Animation Studios"], ["Studios", "Animation Studios"]]);

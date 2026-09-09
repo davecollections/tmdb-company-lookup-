@@ -440,7 +440,7 @@ function compareDecimalTokens(left, right) {
 	return leftNumber < rightNumber ? -1 : leftNumber > rightNumber ? 1 : 0;
 }
 
-function canonicalJsonValue(value, ancestors = new WeakSet()) {
+export function canonicalJsonValue(value, ancestors = new WeakSet()) {
 	if (value === null || typeof value === "string" || typeof value === "boolean") return { ok: true, value };
 	if (typeof value === "number") {
 		return Number.isFinite(value)

@@ -96,7 +96,7 @@ test("Studio plans cover 1, 3, 20, 50, 100 and 125 selections without a cap or n
 		const items = Array.from({ length: count }, (_, index) => studio(index + 1));
 		const result = createStudioHierarchyPlan(before.project, { scope: "new-collection", projectRevision: before.revision, mediaMode: "both", studios: planEntries(items) });
 		assert.equal(result.ok, true);
-		assert.deepEqual(result.plan.counts, { collectionCount: 1, folderCount: count, sourceCount: count * 2 });
+		assert.deepEqual(result.plan.counts, { collectionCount: 1, folderCount: count, sourceCount: count * 2, configured: count * 2, existing: 0, toAdd: count * 2, newFolderSourceCount: count * 2, appendedSourceCount: 0, existingFolderAdditionCount: 0, unresolvedEntityCount: 0, unresolvedSourceCount: 0, unchangedEntityCount: 0 });
 		assert.deepEqual(result.plan.collections[0].folders.map((folder) => folder.studioId), items.map((item) => item.id));
 		if (count === 125) {
 			const applied = applyStudioHierarchyPlan(app, result.plan);
@@ -114,7 +114,7 @@ test("Studio plan defaults to Movies, Popular, Show everywhere and fixed Landsca
 	const result = createStudioHierarchyPlan(before.project, { scope: "new-collection", projectRevision: before.revision, studios: planEntries([item]) });
 	assert.equal(result.ok, true);
 	assert.equal(result.plan.configuration.mediaMode, "movies");
-	assert.equal(result.plan.configuration.sortOptionId, "popular");
+	assert.deepEqual(result.plan.configuration.sortOptionIds, ["popular"]);
 	assert.equal(result.plan.configuration.folderTitleVisibility, DEFAULT_STUDIO_FOLDER_TITLE_VISIBILITY);
 	assert.equal(result.plan.configuration.folderTileShape, "LANDSCAPE");
 	assert.equal(result.plan.collections[0].folders[0].editable.hideTitle, false);
@@ -150,7 +150,7 @@ test("one artwork runtime load resolves a batch before plan creation and falls b
 	assert.deepEqual(resolved[2].folderEditable, { coverImageUrl: "", coverEmoji: "🎬" });
 });
 
-test("New Folder omits complete and partial logical Company destinations while elsewhere remains addable", () => {
+test("New Folder skips exact Company sources, appends missing variants and creates elsewhere-only entities", () => {
 	const app = controller();
 	const destination = app.createCollection({ editable: { title: "Destination" } });
 	const existing = app.createFolder(destination.createdInternalId, { editable: { title: "Existing" } });
@@ -170,6 +170,8 @@ test("New Folder omits complete and partial logical Company destinations while e
 	assert.equal(result.ok, true);
 	assert.deepEqual(result.plan.outcomes.map((outcome) => outcome.status), [STUDIO_PLACEMENT_STATUSES.ALREADY_IN_COLLECTION, STUDIO_PLACEMENT_STATUSES.PARTLY_IN_COLLECTION, STUDIO_PLACEMENT_STATUSES.EXISTS_ELSEWHERE, STUDIO_PLACEMENT_STATUSES.READY]);
 	assert.deepEqual(result.plan.folders.map((folder) => folder.studioId), [3, 4]);
+	assert.equal(result.plan.existingFolderAdditions[0].folderInternalId, existing.createdInternalId);
+	assert.equal(result.plan.existingFolderAdditions[0].sources.length, 1);
 	assert.equal(inspectStudioHierarchyPlacement(before.project, result.plan.folders[0].sources.map((entry) => entry.draft), { destinationCollectionInternalId: destination.createdInternalId }).status, STUDIO_PLACEMENT_STATUSES.EXISTS_ELSEWHERE);
 });
 

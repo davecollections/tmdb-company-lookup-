@@ -2189,7 +2189,10 @@ body.settings-modal-open {
 	font-weight: 750;
 }
 
-.add-source-duplicate-warning {
+.add-source-duplicate-warning,
+.native-folder-duplicate-notice,
+.studio-duplicate-note,
+.genre-attention-note {
 	color: #fff0ca;
 	background: rgb(255 185 107 / 9%);
 	border: 1px solid rgb(255 185 107 / 32%);
@@ -5085,6 +5088,17 @@ body.hierarchy-pointer-dragging .builder-shell {
 	flex: 1 1 auto;
 }
 
+/* Placement explanations and actions share the Configure scroll owner. */
+.people-source-dialog[data-people-hierarchy-scope="new-folder"][data-add-source-step="configure"] .add-source-scroll {
+	align-content: start;
+	overflow-y: auto;
+}
+
+.people-source-dialog[data-people-hierarchy-scope="new-folder"][data-add-source-step="configure"] .people-bulk-list {
+	flex: none;
+	overflow-y: visible;
+}
+
 .people-bulk-row {
 	align-self: start;
 	gap: 8px;
@@ -5767,15 +5781,58 @@ body.hierarchy-pointer-dragging .builder-shell {
 	line-height: 1.45;
 }
 
+.native-folder-placement-summary,
+.native-folder-placement-status {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.native-folder-placement-summary p,
+.native-folder-placement-status p {
+	margin: 5px 0;
+}
+
+.native-folder-duplicate-notice {
+	padding: 8px 10px;
+	font-size: 0.75rem;
+	line-height: 1.45;
+	border-radius: 6px;
+}
+
+.native-folder-destination {
+	display: grid;
+	gap: 5px;
+	margin-top: 8px;
+}
+
+.native-folder-destination select {
+	min-width: 0;
+	max-width: 100%;
+	min-height: 44px;
+}
+
+.people-combination-group.is-pills .people-source-pill[data-already-added="true"]:has(input:disabled) {
+	color: var(--muted);
+	background: var(--panel-deep);
+	border-color: var(--border);
+	box-shadow: none;
+	cursor: default;
+	grid-template-columns: minmax(0, 1fr);
+	gap: 3px;
+}
+
+.people-combination-group.is-pills .people-source-pill[data-already-added="true"] em,
+.studio-configure-row:has([data-native-folder-placement="complete"]) .studio-configure-row-copy strong,
+.people-bulk-row:has([data-native-folder-placement="complete"]) .people-bulk-copy h4 {
+	color: var(--muted);
+}
+
 .studio-duplicate-note {
 	margin: 0;
 	padding: 8px 10px;
-	color: #f4dcaa;
 	font-size: 0.68rem;
 	font-weight: 720;
 	line-height: 1.45;
-	background: rgb(255 185 107 / 7%);
-	border-left: 2px solid rgb(255 185 107 / 58%);
 	border-radius: 7px;
 }
 
@@ -5915,7 +5972,6 @@ body.hierarchy-pointer-dragging .builder-shell {
 	line-height: 1.45;
 	background: rgb(1 180 228 / 8%);
 	border: 1px solid rgb(67 207 238 / 24%);
-	border-left: 2px solid rgb(67 207 238 / 68%);
 	border-radius: 7px;
 }
 
@@ -6240,6 +6296,10 @@ body.hierarchy-pointer-dragging .builder-shell {
 		align-items: flex-start;
 		flex-direction: column;
 		gap: 3px;
+	}
+
+	.people-folder-shape-field .editor-shape-choice-grid {
+		grid-template-columns: minmax(0, 1fr);
 	}
 
 	.people-combination-group > div {
@@ -7059,11 +7119,8 @@ body.hierarchy-pointer-dragging .builder-shell {
 .genre-attention-note {
 	margin: 0;
 	padding: 10px 12px;
-	color: #f4dcaa;
 	font-size: 0.7rem;
 	line-height: 1.45;
-	background: rgb(255 185 107 / 7%);
-	border-left: 2px solid rgb(255 185 107 / 58%);
 	border-radius: 7px;
 }
 

@@ -158,8 +158,8 @@ test("Network Configure presents fixed Series identity, live count, TMDB link, a
 	assert.ok(markup.includes('rel="noopener noreferrer"'));
 	assert.ok(markup.includes("Open ABC on TMDB"));
 	for (const label of ["Popular", "Recent", "Top rated", "Most voted"]) assert.ok(markup.includes(`>${label}<`), label);
-	assert.equal((markup.match(/type="radio"/g) ?? []).length, 4);
-	assert.equal(markup.includes('type="checkbox"'), false);
+	assert.equal((markup.match(/type="checkbox"/g) ?? []).length, 4);
+	assert.equal(markup.includes('type="radio"'), false);
 	assert.equal(markup.includes("Movies"), false);
 	assert.equal(markup.includes("Refresh"), false);
 	assert.equal(markup.includes("Retry"), false);
@@ -180,7 +180,7 @@ test("Network count zero and failure remain informative and never block Add", ()
 	assert.ok(unavailable.includes("Count unavailable"));
 	assert.equal(unavailable.includes(notice), false);
 	assert.equal(unavailable.includes("Retry"), false);
-	const actions = renderToStaticMarkup(createElement(NetworkConfigureActions, { duplicate: false, onAddAnyway() {} }));
+	const actions = renderToStaticMarkup(createElement(NetworkConfigureActions, { duplicate: false, primaryCount: 1, configuredCount: 1, onAddAnyway() {} }));
 	assert.ok(actions.includes(">Add 1 source</button>"));
 	assert.equal(actions.includes("disabled"), false);
 });
@@ -192,12 +192,12 @@ test("Network duplicate preflight distinguishes destination warnings and informa
 			elsewhere: [{ collectionInternalId: "collection", collectionTitle: "TV", folderInternalId: "folder-other", folderTitle: "Broadcast" }],
 		},
 	});
-	assert.ok(markup.includes("Series already exists in this folder."));
+	assert.ok(markup.includes("Some configured Series sources already exist in this folder."));
 	assert.ok(markup.includes("This source exists elsewhere"));
 	assert.ok(markup.includes("Broadcast · in TV"));
-	const actions = renderToStaticMarkup(createElement(NetworkConfigureActions, { duplicate: true, onAddAnyway() {} }));
+	const actions = renderToStaticMarkup(createElement(NetworkConfigureActions, { duplicate: true, primaryCount: 0, configuredCount: 1, onAddAnyway() {} }));
 	assert.ok(actions.includes("No new sources to add"));
-	assert.ok(actions.includes(">Add anyway</button>"));
+	assert.ok(actions.includes(">Add all anyway</button>"));
 	assert.equal(actions.includes("editor-apply"), false);
 });
 
@@ -235,7 +235,7 @@ test("Network Source Edit renders fixed linked identity, count, and editable sem
 	assert.equal((markup.match(/type="radio"/g) ?? []).length, 4);
 	assert.equal(markup.includes('type="checkbox"'), false);
 	assert.ok(markup.indexOf("Open ABC on TMDB") < markup.indexOf("Source name"));
-	assert.ok(markup.indexOf("Source name") < markup.indexOf("Sort Series by"));
+	assert.ok(markup.indexOf("Source name") < markup.indexOf("Sort titles by"));
 	const zeroNotice = "TMDB currently returns no series for this network.";
 	const zero = renderToStaticMarkup(createElement(NetworkEditorFields, {
 		draft: { sortBy: "popularity.desc", originalSortBy: "popularity.desc", sortOptionId: "popular" },

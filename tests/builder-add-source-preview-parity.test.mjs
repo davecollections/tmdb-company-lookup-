@@ -362,7 +362,7 @@ test("ordinary Add Source flows expose the shared dialog while Decade remains on
 		assert.match(files[family], /Preview titles/);
 	}
 	assert.match(files.people, /quickEntry\.drafts\.drafts/);
-	assert.match(files.studio, /allDraftResult\.drafts/);
+	assert.match(files.studio, /titlePreview\.open\(draftResult\.drafts/);
 	assert.match(files.streaming, /draftResult\.drafts/);
 	assert.match(files.genre, /const drafts = built\.ok \? built\.drafts/);
 	assert.doesNotMatch(files.decade, /<SourceTitlePreviewDialog/);

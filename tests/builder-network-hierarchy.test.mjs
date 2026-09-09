@@ -193,7 +193,7 @@ test("Network plans cover 1, 3, 20, 50, 100 and 125 selections and apply 100 ato
 		const items = Array.from({ length: count }, (_, index) => network(index + 1));
 		const result = createNetworkHierarchyPlan(before.project, { scope: "new-collection", projectRevision: before.revision, networks: planEntries(items) });
 		assert.equal(result.ok, true);
-		assert.deepEqual(result.plan.counts, { collectionCount: 1, folderCount: count, sourceCount: count });
+		assert.deepEqual(result.plan.counts, { collectionCount: 1, folderCount: count, sourceCount: count, configured: count, existing: 0, toAdd: count, newFolderSourceCount: count, appendedSourceCount: 0, existingFolderAdditionCount: 0, unresolvedEntityCount: 0, unresolvedSourceCount: 0, unchangedEntityCount: 0 });
 		assert.deepEqual(result.plan.collections[0].folders.map((folder) => folder.networkId), items.map((item) => item.id));
 		assert.equal(JSON.stringify(result.plan).includes("seriesCount"), false);
 		if (count === 100) {
@@ -212,7 +212,7 @@ test("Network plan defaults to Networks, Popular, Show everywhere, Poster, canon
 	const result = createNetworkHierarchyPlan(before.project, { scope: "new-collection", projectRevision: before.revision, networks: planEntries([item]) });
 	assert.equal(result.ok, true);
 	assert.equal(result.plan.configuration.collectionTitle, "Networks");
-	assert.equal(result.plan.configuration.sortOptionId, "popular");
+	assert.deepEqual(result.plan.configuration.sortOptionIds, ["popular"]);
 	assert.equal(result.plan.configuration.folderTitleVisibility, DEFAULT_NETWORK_FOLDER_TITLE_VISIBILITY);
 	assert.equal(result.plan.configuration.artworkOrientation, "POSTER");
 	const folder = result.plan.collections[0].folders[0];
@@ -232,7 +232,7 @@ test("Network hidden collection output does not require its remembered visible t
 	assert.equal(createNetworkHierarchyPlan(state.project, { scope: "new-collection", projectRevision: state.revision, collectionTitle: "", hideCollectionTitle: false, networks: planEntries([network(2)]) }).ok, false);
 });
 
-test("New Folder distinguishes Already, Elsewhere and Ready without a Partial state", () => {
+test("New Folder distinguishes Already, Elsewhere and Ready with complete and partial representation", () => {
 	const app = controller();
 	const destination = app.createCollection({ editable: { title: "Destination" } });
 	const existing = app.createFolder(destination.createdInternalId, { editable: { title: "Existing" } });
@@ -245,7 +245,7 @@ test("New Folder distinguishes Already, Elsewhere and Ready without a Partial st
 	const items = [network(1), network(2), network(3)];
 	const result = createNetworkHierarchyPlan(before.project, { scope: "new-folder", projectRevision: before.revision, destinationCollectionInternalId: destination.createdInternalId, networks: planEntries(items) });
 	assert.equal(result.ok, true);
-	assert.deepEqual(Object.keys(NETWORK_PLACEMENT_STATUSES), ["READY", "ALREADY_IN_COLLECTION", "EXISTS_ELSEWHERE"]);
+	assert.deepEqual(Object.keys(NETWORK_PLACEMENT_STATUSES), ["READY", "PARTLY_IN_COLLECTION", "ALREADY_IN_COLLECTION", "EXISTS_ELSEWHERE"]);
 	assert.deepEqual(result.plan.outcomes.map((outcome) => outcome.status), [NETWORK_PLACEMENT_STATUSES.ALREADY_IN_COLLECTION, NETWORK_PLACEMENT_STATUSES.EXISTS_ELSEWHERE, NETWORK_PLACEMENT_STATUSES.READY]);
 	assert.deepEqual(result.plan.folders.map((folder) => folder.networkId), [2, 3]);
 	assert.equal(inspectNetworkHierarchyPlacement(before.project, result.plan.folders[0].sources[0].draft, { destinationCollectionInternalId: destination.createdInternalId }).status, NETWORK_PLACEMENT_STATUSES.EXISTS_ELSEWHERE);

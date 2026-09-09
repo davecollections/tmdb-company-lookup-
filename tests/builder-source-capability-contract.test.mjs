@@ -57,7 +57,7 @@ const FAMILY_CAPABILITIES = Object.freeze({
 			media: "<CombinationControls", sort: '<PeopleSourceSortChoices context={hierarchy ? "guided" : "add"}', roleCredit: "PEOPLE_SOURCE_COMBINATIONS", preview: "<SourceTitlePreviewDialog", physicalIdentity: "data-tmdb-person-result",
 		}),
 		guided: context("builder/src/ui/PeopleSourceFlow.jsx", { media: C, sort: C, filtersAdvanced: U, roleCredit: C, preview: C, sourceName: F, physicalIdentity: C }, {
-			media: "<CombinationControls", sort: '<PeopleSourceSortChoices context={hierarchy ? "guided" : "add"}', roleCredit: "PEOPLE_SOURCE_COMBINATIONS", preview: "<PeopleTitlePreviewSurface", physicalIdentity: "data-tmdb-person-result",
+			media: "<CombinationControls", sort: '<PeopleSourceSortChoices context={hierarchy ? "guided" : "add"}', roleCredit: "PEOPLE_SOURCE_COMBINATIONS", preview: "<SourceTitlePreviewDialog", physicalIdentity: "data-tmdb-person-result",
 		}),
 		edit: context("builder/src/ui/SourceEditorDialog.jsx", { media: C, sort: C, filtersAdvanced: U, roleCredit: C, preview: C, sourceName: C, physicalIdentity: C }, {
 			media: "<PeopleEditorFields", sort: 'name="people-edit-sort"', roleCredit: "<PeopleEditorFields", preview: "<SourceTitlePreviewDialog", sourceName: 'id="source-edit-title-input"', physicalIdentity: "choosePeopleSourceCombination",
@@ -69,7 +69,7 @@ const FAMILY_CAPABILITIES = Object.freeze({
 			media: "STUDIO_SOURCE_OPTIONS", sort: "<StudioSortChoices", preview: "<SourceTitlePreviewDialog", physicalIdentity: "data-tmdb-studio-result",
 		}),
 		guided: context("builder/src/ui/StudioHierarchyFlow.jsx", { media: C, sort: C, filtersAdvanced: U, roleCredit: N, preview: C, sourceName: F, physicalIdentity: C }, {
-			media: "STUDIO_HIERARCHY_MEDIA_MODES", sort: "<StudioSortChoices", preview: "<NestedPreviewDialog", physicalIdentity: "data-tmdb-studio-result",
+			media: "STUDIO_HIERARCHY_MEDIA_MODES", sort: "<StudioSortChoices", preview: "<SourceTitlePreviewDialog", physicalIdentity: "data-tmdb-studio-result",
 		}),
 		edit: context("builder/src/ui/SourceEditorDialog.jsx", { media: F, sort: C, filtersAdvanced: U, roleCredit: N, preview: C, sourceName: C, physicalIdentity: F }, {
 			sort: "<StudioSortChoices", preview: "<SourceTitlePreviewDialog", sourceName: 'id="source-edit-title-input"',
@@ -81,7 +81,7 @@ const FAMILY_CAPABILITIES = Object.freeze({
 			sort: "<NetworkSortChoices", preview: "<SourceTitlePreviewDialog", physicalIdentity: "data-tmdb-network-result",
 		}),
 		guided: context("builder/src/ui/NetworkHierarchyFlow.jsx", { media: F, sort: C, filtersAdvanced: U, roleCredit: N, preview: C, sourceName: F, physicalIdentity: C }, {
-			sort: "<NetworkSortChoices", preview: "<NestedPreviewDialog", physicalIdentity: "data-tmdb-network-result",
+			sort: "<NetworkSortChoices", preview: "<SourceTitlePreviewDialog", physicalIdentity: "data-tmdb-network-result",
 		}),
 		edit: context("builder/src/ui/SourceEditorDialog.jsx", { media: F, sort: C, filtersAdvanced: U, roleCredit: N, preview: C, sourceName: C, physicalIdentity: F }, {
 			sort: "<NetworkSortChoices", preview: "<SourceTitlePreviewDialog", sourceName: 'id="source-edit-title-input"',

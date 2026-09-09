@@ -3,6 +3,7 @@ import {
 	isSupportedNetworkSort,
 	networkSortOptionId,
 	networkSourceIdentity,
+	networkSourceVariantKey,
 } from "../source-add/index.js";
 import { canonicalPositiveId, canonicalText, diagnostic, validateTouchedSourceTitle } from "./source-edit-utils.js";
 
@@ -52,9 +53,9 @@ export const networkSourceEditor = Object.freeze({
 	id: NETWORK_SOURCE_EDITOR_ID,
 	label: "Network",
 	ownedFields: Object.freeze(["title", "sortBy"]),
-	checkCurrentIdentityDuplicates: true,
+	duplicateKey: networkSourceVariantKey,
 	duplicateMessage() {
-		return "This folder already contains another Series source for this Network. Remove the duplicate or cancel your changes.";
+		return "This folder already contains another Series source for this Network. Choose another sorting option or cancel your changes.";
 	},
 	canEdit(source) {
 		return source?.nodeType === "source" && source.category === "native-tmdb" && networkSourceIdentity(source.editable) !== null;

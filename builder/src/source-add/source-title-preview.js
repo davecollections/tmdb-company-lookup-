@@ -1,34 +1,46 @@
-import { buildPeopleTitlePreview, PEOPLE_SOURCE_COMBINATIONS, peopleSortOptionId } from "./person-source.js";
+import { buildPeopleTitlePreview, PEOPLE_SOURCE_COMBINATIONS, peopleSortOptionId, peopleSourceVariantKey } from "./person-source.js";
+import { studioSourceVariantKey } from "./studio-source.js";
+import { networkSourceVariantKey } from "./network-source.js";
 import { DISCOVER_SORT_OPTIONS, discoverSourceIdentity } from "../nuvio/discover.js";
 import { sourceDraftSortId, sourceSortLabel } from "./source-sort-variants.js";
 
 export function sourcePreviewVariantKey(draft) {
-	return discoverSourceIdentity(draft?.editable).key;
+	return peopleSourceVariantKey(draft) ?? studioSourceVariantKey(draft) ?? networkSourceVariantKey(draft) ?? discoverSourceIdentity(draft?.editable).key;
 }
 
-export function resolveSourcePreviewDraft(drafts, { mediaType, sortOptionId } = {}) {
-	const sort = drafts.some((draft) => sourceDraftSortId(draft) === sortOptionId) ? sortOptionId : sourceDraftSortId(drafts[0]);
-	const variants = drafts.filter((draft) => sourceDraftSortId(draft) === sort);
-	return variants.find((draft) => draft.editable.mediaType === mediaType) ?? variants[0] ?? null;
+export function resolveSourcePreviewDraft(drafts, { mediaType, sortOptionId, role } = {}) {
+	const roles = drafts.filter((draft) => draft.editable.tmdbSourceType === role);
+	const applicable = roles.length ? roles : drafts;
+	const media = applicable.filter((draft) => draft.editable.mediaType === mediaType);
+	const variants = media.length ? media : applicable;
+	return variants.find((draft) => sourceDraftSortId(draft) === sortOptionId) ?? variants[0] ?? null;
 }
 
 export function sourcePreviewContext(draft) {
-	return `${sourceSortLabel(sourceDraftSortId(draft))} ${draft?.editable?.mediaType === "TV" ? "Series" : "Movies"}`;
+	const role = draft?.editable?.tmdbSourceType === "PERSON" ? "Acting · " : draft?.editable?.tmdbSourceType === "DIRECTOR" ? "Directing · " : "";
+	return `${role}${sourceSortLabel(sourceDraftSortId(draft))} ${draft?.editable?.mediaType === "TV" ? "Series" : "Movies"}`;
 }
 
 export function sourcePreviewVariantGroups(drafts, activeDraft, onSelect) {
 	const activeSort = sourceDraftSortId(activeDraft);
 	const activeMedia = activeDraft?.editable?.mediaType;
+	const activeRole = activeDraft?.editable?.tmdbSourceType;
+	const roles = ["PERSON", "DIRECTOR"].filter((role) => drafts.some((draft) => draft.editable.tmdbSourceType === role));
+	const applicable = roles.length ? drafts.filter((draft) => draft.editable.tmdbSourceType === activeRole) : drafts;
 	const sorts = DISCOVER_SORT_OPTIONS.filter((option) => drafts.some((draft) => sourceDraftSortId(draft) === option.id));
-	const media = ["MOVIE", "TV"].filter((mediaType) => drafts.some((draft) => draft.editable.mediaType === mediaType));
+	const media = ["MOVIE", "TV"].filter((mediaType) => applicable.some((draft) => draft.editable.mediaType === mediaType));
 	return [
+		...(roles.length > 1 ? [{ id: "role", label: "Role", ariaLabel: "Preview role", options: roles.map((role) => ({
+			id: role, label: role === "PERSON" ? "Acting" : "Directing", selected: activeRole === role,
+			onSelect: () => onSelect(resolveSourcePreviewDraft(drafts, { role, mediaType: activeMedia, sortOptionId: activeSort })),
+		})) }] : []),
 		...(media.length > 1 ? [{ id: "media", label: "Media", ariaLabel: "Preview media", options: media.map((mediaType) => ({
 			id: mediaType, label: mediaType === "TV" ? "Series" : "Movies", selected: activeMedia === mediaType,
-			onSelect: () => onSelect(resolveSourcePreviewDraft(drafts, { mediaType, sortOptionId: activeSort })),
+			onSelect: () => onSelect(resolveSourcePreviewDraft(drafts, { mediaType, sortOptionId: activeSort, role: activeRole })),
 		})) }] : []),
 		...(sorts.length > 1 ? [{ id: "sort", label: "Show", ariaLabel: "Preview show", options: sorts.map((option) => ({
 			id: option.id, label: option.label, selected: activeSort === option.id,
-			onSelect: () => onSelect(resolveSourcePreviewDraft(drafts, { mediaType: activeMedia, sortOptionId: option.id })),
+			onSelect: () => onSelect(resolveSourcePreviewDraft(drafts, { mediaType: activeMedia, sortOptionId: option.id, role: activeRole })),
 		})) }] : []),
 	];
 }
@@ -56,7 +68,7 @@ export function listSourceTitlePreviewSummary(data) {
 	return `Showing ${loadedCount} ${titleLabel}`;
 }
 
-export function sourceTitlePreviewRequest(kind, sourceDraft) {
+export function sourceTitlePreviewRequest(kind, sourceDraft, { person = null } = {}) {
 	const editable = sourceDraft?.editable;
 	if (editable === null || typeof editable !== "object") return null;
 	const common = {
@@ -73,7 +85,7 @@ export function sourceTitlePreviewRequest(kind, sourceDraft) {
 		));
 		const sortOptionId = peopleSortOptionId(editable.sortBy, editable.mediaType);
 		return combination && sortOptionId
-			? Object.freeze({ ...common, tmdbId: editable.tmdbId, combinationId: combination.id, sortOptionId })
+			? Object.freeze({ ...common, tmdbId: editable.tmdbId, combinationId: combination.id, sortOptionId, ...(person?.id === editable.tmdbId && person.combinedCredits ? { person } : {}) })
 			: null;
 	}
 	if (kind === "studio" || kind === "network") {
@@ -100,7 +112,7 @@ export function sourceTitlePreviewProviderAvailable(request, providers) {
 	if (!request) return false;
 	if (request.kind === "collection") return typeof providers.collection?.getCollection === "function";
 	if (request.kind === "list") return typeof providers.list?.getList === "function";
-	if (request.kind === "people") return typeof providers.people?.getPerson === "function";
+	if (request.kind === "people") return Boolean(request.person) || typeof providers.people?.getPerson === "function";
 	if (request.kind === "studio") return typeof providers.studio?.getStudioPreview === "function";
 	if (request.kind === "network") return typeof providers.network?.getNetworkPreview === "function";
 	if (request.kind === "streaming") return typeof providers.streaming?.getStreamingPreview === "function";
@@ -125,7 +137,7 @@ export async function requestSourceTitlePreview(request, providers, signal) {
 		}) });
 	}
 	if (request.kind === "people") {
-		const result = await providers.people.getPerson(request.tmdbId, { signal });
+		const result = request.person ? { ok: true, data: request.person } : await providers.people.getPerson(request.tmdbId, { signal });
 		if (!result?.ok) return result;
 		const preview = buildPeopleTitlePreview(result.data, {
 			combinations: [request.combinationId],

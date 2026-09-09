@@ -1,4 +1,6 @@
 import { NETWORK_SOURCE_MODE } from "./source-modes.js";
+import { orderedSourceSortIds } from "./source-sort-variants.js";
+import { inspectNativeSourceDuplicates, isSourceVariantTitle, nativeSourceVariantKey, sourceVariantTitle } from "./native-source-variants.js";
 
 export const NETWORK_SORT_OPTIONS = Object.freeze([
 	Object.freeze({ id: "popular", label: "Popular", description: "Popular series first.", value: "popularity.desc" }),
@@ -115,7 +117,7 @@ export function validateNetworkSourceDraft(draft, { network = null, path = "$net
 	if (editable.mediaType !== "TV") errors.push(diagnostic("UNSUPPORTED_NETWORK_MEDIA_TYPE", `${path}.editable.mediaType`, "Network sources must use the proven TV contract."));
 	if (id === null) errors.push(diagnostic("INVALID_NETWORK_TMDB_ID", `${path}.editable.tmdbId`, "The Network TMDB ID must be a positive safe integer."));
 	if (!title || editable.title !== title) errors.push(diagnostic("INVALID_NETWORK_TITLE", `${path}.editable.title`, "The Network source title must be non-empty and trimmed."));
-	if (network !== null && (id !== network.id || editable.title !== canonicalText(network.name))) {
+	if (network !== null && (id !== network.id || !isSourceVariantTitle(editable.title, canonicalText(network.name), editable.sortBy, "TV", NETWORK_SORT_OPTIONS))) {
 		errors.push(diagnostic("MISMATCHED_NETWORK_SOURCE", path, "The Network source must match the selected cached Network."));
 	}
 	if (!isSupportedNetworkSort(editable.sortBy)) errors.push(diagnostic("INVALID_NETWORK_SORT", `${path}.editable.sortBy`, "Choose a supported Network Series sort order."));
@@ -128,13 +130,42 @@ export function validateNetworkHierarchySourceDraft(draft, { network = null, pat
 	const errors = [...validation.errors];
 	if (!plainObject(draft?.editable)) return { ok: false, errors };
 	const id = canonicalTmdbId(draft.editable.tmdbId);
-	if (draft.editable.title !== NETWORK_HIERARCHY_SOURCE_TITLE) {
+	if (!isSourceVariantTitle(draft.editable.title, NETWORK_HIERARCHY_SOURCE_TITLE, draft.editable.sortBy, "TV", NETWORK_SORT_OPTIONS)) {
 		errors.push(diagnostic("INVALID_NETWORK_HIERARCHY_TITLE", `${path}.editable.title`, `Network hierarchy sources must use the ${NETWORK_HIERARCHY_SOURCE_TITLE} title.`));
 	}
 	if (network !== null && id !== network?.id) {
 		errors.push(diagnostic("MISMATCHED_NETWORK_HIERARCHY_SOURCE", path, "The Network hierarchy source must match the selected cached Network."));
 	}
 	return { ok: errors.length === 0, errors };
+}
+
+export function buildNetworkSourceDrafts(network, { sortOptionId = DEFAULT_NETWORK_SORT_OPTION_ID, sortOptionIds, hierarchy = false } = {}) {
+	const sorts = orderedSourceSortIds(sortOptionIds, sortOptionId, NETWORK_SORT_OPTIONS);
+	if (sorts === null || sorts.length === 0) return { ok: false, drafts: [], errors: [diagnostic("UNSUPPORTED_NETWORK_SORT", "$network.sortOptionIds", "Choose at least one option.")] };
+	const results = sorts.map((sort) => (hierarchy ? buildNetworkHierarchySourceDraft : buildNetworkSourceDraft)(network, { sortOptionId: sort }));
+	const errors = results.flatMap((result) => result.errors);
+	if (errors.length) return { ok: false, drafts: [], errors };
+	const drafts = results.map(({ draft }, index) => ({
+		...draft,
+		editable: { ...draft.editable, title: sourceVariantTitle(draft.editable.title, sorts[index], NETWORK_SORT_OPTIONS, sorts.length > 1) },
+	}));
+	return { ...validateNetworkSourceDrafts(drafts, { network, hierarchy }), drafts };
+}
+
+export function validateNetworkSourceDrafts(drafts, { network = null, hierarchy = false } = {}) {
+	if (!Array.isArray(drafts) || drafts.length < 1 || drafts.length > NETWORK_SORT_OPTIONS.length) {
+		return { ok: false, errors: [diagnostic("INVALID_NETWORK_SOURCE_BUNDLE", "$network.sources", "Choose supported Network source variants.")] };
+	}
+	const errors = drafts.flatMap((draft) => (hierarchy ? validateNetworkHierarchySourceDraft : validateNetworkSourceDraft)(draft, { network }).errors);
+	const keys = drafts.map(networkSourceVariantKey);
+	if (keys.some((key) => key === null) || new Set(keys).size !== keys.length || new Set(drafts.map((draft) => canonicalTmdbId(draft?.editable?.tmdbId))).size !== 1) {
+		errors.push(diagnostic("INVALID_NETWORK_SOURCE_VARIANTS", "$network.sources", "Choose distinct source variants for one Network."));
+	}
+	return { ok: errors.length === 0, errors };
+}
+
+export function networkSourceVariantKey(source) {
+	return nativeSourceVariantKey(source, networkSourceIdentity, NETWORK_SORT_OPTIONS);
 }
 
 export function networkSourceIdentity(editable) {
@@ -147,34 +178,14 @@ export function networkSourceIdentity(editable) {
 	return `tmdb|NETWORK|${id}|TV`;
 }
 
-export function inspectNetworkSourceDuplicates(project, destinationFolderInternalId, networkId) {
-	const identity = `tmdb|NETWORK|${networkId}|TV`;
-	const destination = [];
-	const elsewhere = [];
-	for (const collection of project?.collections ?? []) {
-		for (const folder of collection.folders ?? []) {
-			for (const source of folder.sources ?? []) {
-				if (networkSourceIdentity(source?.editable) !== identity) continue;
-				const occurrence = Object.freeze({
-					identity,
-					collectionInternalId: collection.internalId,
-					collectionTitle: canonicalText(collection.editable?.title),
-					folderInternalId: folder.internalId,
-					folderTitle: canonicalText(folder.editable?.title),
-					sourceInternalId: source.internalId,
-					sourceTitle: canonicalText(source.editable?.title),
-				});
-				if (folder.internalId === destinationFolderInternalId) destination.push(occurrence);
-				else elsewhere.push(occurrence);
-			}
-		}
-	}
-	return Object.freeze({ destination: Object.freeze(destination), elsewhere: Object.freeze(elsewhere) });
+export function inspectNetworkSourceDuplicates(project, destinationFolderInternalId, drafts) {
+	return inspectNativeSourceDuplicates(project, destinationFolderInternalId, drafts, networkSourceVariantKey);
 }
 
-export function networkDuplicateOverrideIdentity(folderInternalId, draft) {
-	if (typeof folderInternalId !== "string" || !folderInternalId || !validateNetworkSourceDraft(draft).ok) return null;
-	return `${folderInternalId}\n${networkSourceIdentity(draft.editable)}`;
+export function networkDuplicateOverrideIdentity(folderInternalId, candidate) {
+	const drafts = Array.isArray(candidate) ? candidate : [candidate];
+	if (typeof folderInternalId !== "string" || !folderInternalId || !validateNetworkSourceDrafts(drafts).ok) return null;
+	return `${folderInternalId}\n${drafts.map(networkSourceVariantKey).join("\n")}`;
 }
 
 function findCollectionAndFolder(project, folderInternalId) {
@@ -189,10 +200,11 @@ export function createNetworkSource(controller, {
 	folderInternalId,
 	network,
 	draft,
+	drafts = draft ? [draft] : [],
 	duplicateOverrideIdentity = null,
 	interactionLocked = false,
 } = {}) {
-	const validation = validateNetworkSourceDraft(draft, { network });
+	const validation = validateNetworkSourceDrafts(drafts, { network });
 	if (!validation.ok) return { ok: false, errors: validation.errors, warnings: [] };
 	if (interactionLocked) return { ok: false, errors: [diagnostic("NETWORK_CREATION_INTERACTION_LOCKED", "$network.creation", "Finish the current hierarchy interaction before adding a Network source.")], warnings: [] };
 	const state = controller.getState();
@@ -200,13 +212,14 @@ export function createNetworkSource(controller, {
 	if (!location || state.selection.folderInternalId !== folderInternalId) {
 		return { ok: false, errors: [diagnostic("NETWORK_FOLDER_UNAVAILABLE", "$network.destination", "The selected destination folder is no longer available.")], warnings: [] };
 	}
-	const duplicateReview = inspectNetworkSourceDuplicates(state.project, folderInternalId, network.id);
+	const duplicateReview = inspectNetworkSourceDuplicates(state.project, folderInternalId, drafts);
 	const duplicateExists = duplicateReview.destination.length > 0;
-	const override = networkDuplicateOverrideIdentity(folderInternalId, draft);
+	const override = networkDuplicateOverrideIdentity(folderInternalId, drafts);
 	const addAnyway = duplicateExists && duplicateOverrideIdentity === override;
-	if (duplicateExists && !addAnyway) {
-		return { ok: false, requiresDuplicateOverride: true, errors: [diagnostic("NETWORK_SOURCE_ALREADY_EXISTS", "$network.source", "Series already exists in this folder.")], warnings: [], duplicateReview };
+	const draftsToAdd = addAnyway ? drafts : duplicateReview.missingDrafts;
+	if (draftsToAdd.length === 0) {
+		return { ok: false, requiresDuplicateOverride: true, errors: [diagnostic("NETWORK_SOURCE_ALREADY_EXISTS", "$network.source", "Every selected Series source already exists in this folder.")], warnings: [], duplicateReview };
 	}
-	const result = controller.addSourcesToFolder(folderInternalId, { sources: [{ category: draft.category, editable: draft.editable }] });
-	return result.ok ? { ...result, addedSourceCount: 1, duplicateReview, duplicateOverrideUsed: addAnyway } : result;
+	const result = controller.addSourcesToFolder(folderInternalId, { sources: draftsToAdd.map((entry) => ({ category: entry.category, editable: entry.editable })) });
+	return result.ok ? { ...result, addedSourceCount: draftsToAdd.length, duplicateReview, duplicateOverrideUsed: addAnyway } : result;
 }

@@ -57,7 +57,7 @@ test("family sort tables are media-specific, missing sorts are omitted, unknown 
 		}
 	}
 	assert.match(summary(native("COMPANY", "MOVIE", { sortBy: "vote_count.desc" })), /Most voted/);
-	assert.match(summary(native("PERSON", "MOVIE", { sortBy: "vote_count.desc" })), /Other sorting/);
+	assert.match(summary(native("PERSON", "MOVIE", { sortBy: "vote_count.desc" })), /Most voted/);
 	assert.match(summary(native("COMPANY", "future-media")), /Other media type/);
 });
 
