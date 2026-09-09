@@ -5,6 +5,8 @@ import {
 } from "./person-folder-artwork.js";
 import { PEOPLE_SOURCE_MODE } from "./source-modes.js";
 import { isPositiveSafePersonId } from "./tmdb-person-input.js";
+import { orderedSourceSortIds } from "./source-sort-variants.js";
+import { inspectNativeSourceDuplicates, isSourceVariantTitle, nativeSourceVariantKey, sourceVariantTitle } from "./native-source-variants.js";
 
 export const PEOPLE_ROLES = Object.freeze([
 	Object.freeze({ id: "acting", label: "Acting", tmdbSourceType: "PERSON" }),
@@ -40,6 +42,11 @@ export const PEOPLE_SOURCE_SORT_OPTIONS = Object.freeze([
 		id: "top-rated",
 		label: "Top rated",
 		values: Object.freeze({ MOVIE: "vote_average.desc", TV: "vote_average.desc" }),
+	}),
+	Object.freeze({
+		id: "most-votes",
+		label: "Most voted",
+		values: Object.freeze({ MOVIE: "vote_count.desc", TV: "vote_count.desc" }),
 	}),
 ]);
 export const DEFAULT_PEOPLE_SOURCE_SORT_OPTION_ID = "popular";
@@ -244,6 +251,12 @@ export function createPeopleCustomConfigurationMap(configurations, {
 }
 
 function comparePreviewCredits(left, right, sortOptionId) {
+	if (sortOptionId === "most-votes") {
+		return right.voteCount - left.voteCount
+			|| right.voteAverage - left.voteAverage
+			|| right.popularity - left.popularity
+			|| left.identity.localeCompare(right.identity);
+	}
 	if (sortOptionId === "recent") {
 		return right.releaseDate.localeCompare(left.releaseDate)
 			|| right.popularity - left.popularity
@@ -290,14 +303,17 @@ export function buildPeopleTitlePreview(person, {
 		return Object.freeze({ ok: false, mediaType: resolvedMediaType, totalResults: 0, items: Object.freeze([]), errors: Object.freeze([diagnostic("INVALID_PEOPLE_PREVIEW_MEDIA", "$people.preview.mediaType", "Choose a media type included in this person’s selected sources.")]) });
 	}
 	const byIdentity = new Map();
+	const titleIdentities = new Set();
 	for (const combination of PEOPLE_SOURCE_COMBINATIONS) {
 		if (!selected.has(combination.id) || combination.mediaType !== resolvedMediaType) continue;
 		const credits = combination.role === "acting" ? person.combinedCredits.cast : person.combinedCredits.crew;
 		for (const credit of credits) {
-			if (!plainObject(credit) || !isPositiveSafePersonId(credit.id) || typeof credit.posterPath !== "string") continue;
+			if (!plainObject(credit) || !isPositiveSafePersonId(credit.id)) continue;
 			if (credit.mediaType !== (combination.mediaType === "MOVIE" ? "movie" : "tv")) continue;
 			if (combination.role === "directing" && canonicalText(credit.job).toLowerCase() !== "director") continue;
 			const identity = `${credit.mediaType}|${credit.id}`;
+			titleIdentities.add(identity);
+			if (typeof credit.posterPath !== "string") continue;
 			if (byIdentity.has(identity)) continue;
 			byIdentity.set(identity, Object.freeze({
 				identity,
@@ -315,7 +331,7 @@ export function buildPeopleTitlePreview(person, {
 	return Object.freeze({
 		ok: true,
 		mediaType: resolvedMediaType,
-		totalResults: sortedItems.length,
+		totalResults: titleIdentities.size,
 		items: Object.freeze(sortedItems.slice(0, limit)),
 		errors: Object.freeze([]),
 	});
@@ -339,7 +355,7 @@ export function validatePeopleRoleMediaSelection({ roles, media } = {}) {
 	return validatePeopleCombinationSelection(combinations);
 }
 
-export function buildPeopleSourceDrafts(person, { combinations, sortOptionId = DEFAULT_PEOPLE_SOURCE_SORT_OPTION_ID } = {}) {
+export function buildPeopleSourceDrafts(person, { combinations, sortOptionId = DEFAULT_PEOPLE_SOURCE_SORT_OPTION_ID, sortOptionIds } = {}) {
 	const errors = [];
 	const personName = canonicalText(person?.name);
 	if (!isPositiveSafePersonId(person?.id) || !personName || person?.name !== personName) {
@@ -347,26 +363,27 @@ export function buildPeopleSourceDrafts(person, { combinations, sortOptionId = D
 	}
 	const selectionValidation = validatePeopleCombinationSelection(combinations);
 	errors.push(...selectionValidation.errors);
-	if (!sortOptionById.has(sortOptionId)) {
-		errors.push(diagnostic("INVALID_PEOPLE_SORT_OPTION", "$people.sortOptionId", "Choose a supported People sort order."));
+	const sorts = orderedSourceSortIds(sortOptionIds, sortOptionId, PEOPLE_SOURCE_SORT_OPTIONS);
+	if (sorts === null) {
+		errors.push(diagnostic("INVALID_PEOPLE_SORT_OPTION", "$people.sortOptionIds", Array.isArray(sortOptionIds) && sortOptionIds.length === 0 ? "Choose at least one option." : "Choose a supported People sort order."));
 	}
 	if (errors.length > 0) return { ok: false, drafts: [], errors };
 
 	const selected = new Set(combinations);
 	const drafts = PEOPLE_SOURCE_COMBINATIONS
 		.filter((entry) => selected.has(entry.id))
-		.map((entry) => ({
+		.flatMap((entry) => sorts.map((sort) => ({
 			category: PEOPLE_SOURCE_MODE.category,
 			editable: {
-				title: entry.sourceTitle,
-				sortBy: peopleSortValue(sortOptionId, entry.mediaType),
+				title: sourceVariantTitle(entry.sourceTitle, sort, PEOPLE_SOURCE_SORT_OPTIONS, sorts.length > 1),
+				sortBy: peopleSortValue(sort, entry.mediaType),
 				tmdbId: person.id,
 				filters: {},
 				provider: "tmdb",
 				mediaType: entry.mediaType,
 				tmdbSourceType: entry.tmdbSourceType,
 			},
-		}));
+		})));
 	const validation = validatePeopleSourceDrafts(drafts, { person });
 	return { ...validation, drafts: validation.ok ? drafts : [] };
 }
@@ -388,7 +405,7 @@ export function validatePeopleSourceDraft(draft, path = "$people.sources[0]") {
 	const sourceType = canonicalText(editable.tmdbSourceType).toUpperCase();
 	const mediaType = canonicalText(editable.mediaType).toUpperCase();
 	const expectedTitle = peopleSourceTitle(sourceType, mediaType);
-	if (!title || editable.title !== title || expectedTitle === null || title !== expectedTitle) {
+	if (!title || editable.title !== title || expectedTitle === null || !isSourceVariantTitle(title, expectedTitle, editable.sortBy, mediaType, PEOPLE_SOURCE_SORT_OPTIONS)) {
 		errors.push(diagnostic("INVALID_PEOPLE_SOURCE_TITLE", `${path}.editable.title`, "The People source title must use the established role-and-media wording."));
 	}
 	if (!isPositiveSafePersonId(editable.tmdbId)) {
@@ -409,11 +426,11 @@ export function validatePeopleSourceDraft(draft, path = "$people.sources[0]") {
 }
 
 export function validatePeopleSourceDrafts(drafts, { person = null } = {}) {
-	if (!Array.isArray(drafts) || drafts.length < 1 || drafts.length > 4) {
-		return { ok: false, errors: [diagnostic("INVALID_PEOPLE_SOURCE_BUNDLE", "$people.sources", "People source bundles must contain one to four sources.")] };
+	if (!Array.isArray(drafts) || drafts.length < 1 || drafts.length > PEOPLE_SOURCE_COMBINATIONS.length * PEOPLE_SOURCE_SORT_OPTIONS.length) {
+		return { ok: false, errors: [diagnostic("INVALID_PEOPLE_SOURCE_BUNDLE", "$people.sources", "Choose supported People source variants.")] };
 	}
 	const errors = drafts.flatMap((draft, index) => validatePeopleSourceDraft(draft, `$people.sources[${index}]`).errors);
-	const identities = drafts.map((draft) => peopleSourceIdentity(draft?.editable));
+	const identities = drafts.map(peopleSourceVariantKey);
 	if (identities.some((identity) => identity === null) || new Set(identities).size !== identities.length) {
 		errors.push(diagnostic("DUPLICATE_PEOPLE_SOURCE_IDENTITY", "$people.sources", "A People source bundle must contain distinct supported identities."));
 	}
@@ -446,51 +463,19 @@ export function peopleSourceIdentity(editable) {
 	return `tmdb|${sourceType}|${tmdbId}|${mediaType}`;
 }
 
-function projectFolders(project) {
-	const folders = [];
-	for (const collection of project?.collections ?? []) {
-		for (const folder of collection.folders ?? []) folders.push({ collection, folder });
-	}
-	return folders;
+export function peopleSourceVariantKey(source) {
+	return nativeSourceVariantKey(source, peopleSourceIdentity, PEOPLE_SOURCE_SORT_OPTIONS);
 }
 
 export function inspectPeopleSourceDuplicates(project, destinationFolderInternalId, drafts) {
-	const identities = drafts.map((draft) => peopleSourceIdentity(draft?.editable)).filter(Boolean);
-	const selected = new Set(identities);
-	const destination = [];
-	const elsewhere = [];
-	for (const { collection, folder } of projectFolders(project)) {
-		for (const source of folder.sources ?? []) {
-			const identity = peopleSourceIdentity(source?.editable);
-			if (!selected.has(identity)) continue;
-			const occurrence = {
-				identity,
-				collectionInternalId: collection.internalId,
-				collectionTitle: canonicalText(collection.editable?.title),
-				folderInternalId: folder.internalId,
-				folderTitle: canonicalText(folder.editable?.title),
-				sourceInternalId: source.internalId,
-				sourceTitle: canonicalText(source.editable?.title),
-			};
-			if (folder.internalId === destinationFolderInternalId) destination.push(occurrence);
-			else elsewhere.push(occurrence);
-		}
-	}
-	const destinationIdentities = new Set(destination.map((entry) => entry.identity));
-	return Object.freeze({
-		identities: Object.freeze([...identities]),
-		destination: Object.freeze(destination),
-		elsewhere: Object.freeze(elsewhere),
-		missingDrafts: Object.freeze(drafts.filter((draft) => !destinationIdentities.has(peopleSourceIdentity(draft.editable)))),
-		duplicateDrafts: Object.freeze(drafts.filter((draft) => destinationIdentities.has(peopleSourceIdentity(draft.editable)))),
-	});
+	return inspectNativeSourceDuplicates(project, destinationFolderInternalId, drafts, peopleSourceVariantKey);
 }
 
 export function peopleDuplicateOverrideIdentity(folderInternalId, drafts) {
 	if (typeof folderInternalId !== "string" || !folderInternalId) return null;
 	const validation = validatePeopleSourceDrafts(drafts);
 	if (!validation.ok) return null;
-	return `${folderInternalId}\n${drafts.map((draft) => peopleSourceIdentity(draft.editable)).join("\n")}`;
+	return `${folderInternalId}\n${drafts.map(peopleSourceVariantKey).join("\n")}`;
 }
 
 function findCollectionAndFolder(project, folderInternalId) {

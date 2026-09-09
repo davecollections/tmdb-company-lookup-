@@ -48,7 +48,7 @@ test("single and count-aware Add Source families use Add language", () => {
 	for (const [family, relativePath, label] of [
 		["Movie franchise", "builder/src/ui/AddSourceDialog.jsx", '"Add 1 source"'],
 		["People", "builder/src/ui/PeopleSourceFlow.jsx", '`Add ${primaryCount} source${primaryCount === 1 ? "" : "s"}`'],
-		["Network", "builder/src/ui/NetworkSourceFlow.jsx", '"Add 1 source"'],
+		["Network", "builder/src/ui/NetworkSourceFlow.jsx", '`Add ${primaryCount} source${primaryCount === 1 ? "" : "s"}`'],
 		["Decade", "builder/src/ui/DecadeSourceFlow.jsx", '`Add ${saveCount} sources`'],
 	]) {
 		assert.ok(read(relativePath).includes(label), `${family} lost its Add Source label`);

@@ -12,6 +12,9 @@ const studioCatalogue = read("builder/src/source-add/studio-catalogue.js");
 const searchHook = read("builder/src/ui/use-studio-catalogue-search.js");
 const previewProvider = read("builder/src/source-add/tmdb-studio-preview-provider.js");
 const discoverPreviewRequester = read("builder/src/source-add/tmdb-discover-preview-requester.js");
+const sharedPreview = read("builder/src/ui/SourceTitlePreviewDialog.jsx");
+const previewHook = read("builder/src/ui/use-source-title-preview.js");
+const previewVariants = read("builder/src/source-add/source-title-preview.js");
 const nestedDialog = read("builder/src/ui/NestedPreviewDialog.jsx");
 const franchiseFlow = read("builder/src/ui/FranchiseSourceFlow.jsx");
 const posterGrid = read("builder/src/ui/PosterOnlyPreviewGrid.jsx");
@@ -39,7 +42,7 @@ test("Studio hierarchy reuses the physical catalogue search state and preserves 
 });
 
 test("selectable Studio cards use native full-card checkboxes and contain no nested Preview action", () => {
-	const result = flow.slice(flow.indexOf("function SelectableStudioResult"), flow.indexOf("function previewMediaTypes"));
+	const result = flow.slice(flow.indexOf("function SelectableStudioResult"), flow.indexOf("function StudioConfigureRow"));
 	assert.match(result, /<label[^>]+studio-result-selectable/);
 	assert.match(result, /className="visually-hidden choice-card-input" type="checkbox"/);
 	assert.doesNotMatch(result, /selectable-card-indicator|✓/);
@@ -77,15 +80,14 @@ test("Configure has one shared Movies default, three compositions, and the four 
 	assert.doesNotMatch(flow, /per-Studio|Automatic/);
 });
 
-test("Preview is explicit only in direct Configure rows with lazy Both tabs", () => {
+test("Preview is explicit in Configure and resolves exact Media/Show candidates through the shared dialog", () => {
 	assert.match(flow, /function openPreview\(studio, trigger\)/);
 	assert.match(flow, /Preview titles<\/button>/);
-	assert.match(flow, /role="tablist"/);
-	assert.match(flow, /mediaTypes\.map\(\(mediaType\)/);
-	assert.match(flow, /previewMediaTypes\(options\.mediaMode\)\[0\]/);
-	assert.doesNotMatch(flow, /step === "select" \? "movies"/);
-	assert.equal((flow.match(/previewProvider\.getStudioPreview/g) ?? []).length, 1);
-	assert.doesNotMatch(flow, /prefetch|Promise\.all\([^)]*getStudioPreview/);
+	assert.match(flow, /titlePreview.open\(entry.result.drafts/);
+	assert.match(previewHook, /sourcePreviewVariantGroups/);
+	assert.match(previewVariants, /label: "Media"/);
+	assert.match(previewVariants, /label: "Show"/);
+	assert.doesNotMatch(flow, /previewProvider.getStudioPreview|prefetch/);
 });
 
 test("Add and hierarchy share checked-in Movie count filters and explicit result ordering", () => {
@@ -107,13 +109,15 @@ test("Preview response cache is sort-aware while transient Series knowledge is C
 	assert.match(discoverPreviewRequester, /`\$\{entityType\}:\$\{entityId\}:\$\{mediaType\}:\$\{sortBy\}`/);
 	assert.match(previewProvider, /cacheTtlMs = TMDB_STUDIO_PREVIEW_CACHE_TTL_MS/);
 	assert.match(previewProvider, /cacheMaxEntries = TMDB_STUDIO_PREVIEW_CACHE_MAX_ENTRIES/);
-	assert.match(flow, /\[`\$\{studio\.id\}\|TV`\]: outcome\.result\.data\.totalResults/);
+	assert.match(flow, /preview.candidate.request.tmdbId/);
+	assert.match(flow, /preview.data.totalResults/);
 	assert.doesNotMatch(flow, /not loaded|Series · —|Series · -/i);
 	assert.doesNotMatch(previewProvider, /limit.*cacheKey|cacheKey.*limit/);
 });
 
 test("Studio and Franchise share the structural nested Preview shell without sharing provider data", () => {
-	assert.match(flow, /<NestedPreviewDialog/);
+	assert.match(flow, /<SourceTitlePreviewDialog/);
+	assert.match(sharedPreview, /<NestedPreviewDialog/);
 	assert.match(franchiseFlow, /<NestedPreviewDialog/);
 	assert.match(nestedDialog, /createPortal\(content, document\.body\)/);
 	assert.match(nestedDialog, /handleDialogKeyDown/);
@@ -145,7 +149,7 @@ test("Appearance exposes presentation decisions without artwork controls or Stud
 test("Studio hierarchy has one scroll owner, sticky actions, and 10-poster Preview presentation everywhere", () => {
 	assert.equal((flow.match(/className="add-source-scroll"/g) ?? []).length, 1);
 	assert.match(flow, /<footer className="add-source-actions">/);
-	assert.match(flow, /<PosterOnlyPreviewGrid items=\{items\} limit=\{10\}/);
+	assert.match(sharedPreview, /<PosterOnlyPreviewGrid[^\n]*limit=\{10\}/);
 	assert.doesNotMatch(styles, /\.studio-preview-grid img:nth-child\(n \+ 6\)/);
 	assert.match(styles, /@media \(max-width: 620px\)[\s\S]*\.franchise-preview-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(3/);
 	assert.match(styles, /\.nested-modal-backdrop\s*\{[\s\S]*z-index:\s*var\(--layer-nested-modal\)/);
@@ -153,7 +157,7 @@ test("Studio hierarchy has one scroll owner, sticky actions, and 10-poster Previ
 	assert.match(posterGrid, /slice\(0, limit\)/);
 	assert.match(posterGrid, /data-preview-empty-state="true">\{emptyMessage\}/);
 	assert.match(posterGrid, /onError=/);
-	assert.doesNotMatch(flow.slice(flow.indexOf("function StudioTitlePreview"), flow.indexOf("function placementLabel")), /item\.title|item\.year|No poster|first-page|Preview does not change/);
+	assert.doesNotMatch(flow.slice(flow.indexOf("function StudioConfigureRow"), flow.indexOf("function ConfigureStep")), /item\.title|item\.year|No poster|first-page|Preview does not change/);
 });
 
 test("selected-folder Studio Add Source remains the separate physical flow with its live count provider", () => {

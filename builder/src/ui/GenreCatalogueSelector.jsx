@@ -22,7 +22,7 @@ function pushContextHistory(token, level) {
 }
 
 export function genreMediaLabel(concept) {
-	return concept.shared ? "Movies & Series" : concept.movieId !== null ? "Movies" : "Series";
+	return concept.shared ? "Movies + Series" : concept.movieId !== null ? "Movies" : "Series";
 }
 
 export function GenreContextCatalogueSubview({

@@ -162,7 +162,7 @@ test("Structure presents plain-language plan-derived choices without changing co
 	assert.match(choiceCardsSource, /hideLegend \? "visually-hidden"/);
 	assert.match(structure, /GENRE_HIERARCHY_STRUCTURES/);
 	assert.match(structureSource, /label: "Genre folders", description: "One folder card for each Genre, with its available Movies and Series sources together inside\."/);
-	assert.match(structureSource, /label: "Movies & Series folders", description: "Create Movies and Series folder cards as needed, with Genre sources inside each\."/);
+	assert.match(structureSource, /label: "Movies \+ Series folders", description: "Create Movies and Series folder cards as needed, with Genre sources inside each\."/);
 	assert.match(structureSource, /label: "Separate Movie & Series Genre folders", description: "Create separate folder cards for each Movie and Series Genre\."/);
 	assert.match(structureSource, /label: "Separate Movie & Series collections", description: "Create one Home collection for Movie Genres and another for Series Genres\."/);
 	assert.match(structure, /GENRE_STRUCTURE_PREVIEWS/);

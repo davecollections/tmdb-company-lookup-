@@ -1475,6 +1475,7 @@ export function BuilderWorkspace({
 		setRestoreCreationTriggerFocus(true);
 	}
 
+
 	function applyDecadesPlan(plan) {
 		if (!creationSession) return { ok: false, errors: [{ message: "The creation flow is no longer available." }] };
 		const result = applyDecadesHierarchyPlan(controller, plan);
@@ -1498,13 +1499,16 @@ export function BuilderWorkspace({
 		const result = applyPeopleHierarchyPlan(controller, plan);
 		if (!result.ok) return result;
 		const nodeType = creationSession.scope === "new-collection" ? "collection" : "folder";
-		const internalId = nodeType === "collection" ? result.createdCollectionInternalIds?.[0] : result.createdFolderInternalIds?.[0];
+		const internalId = nodeType === "collection" ? result.createdCollectionInternalIds?.[0] : result.createdFolderInternalIds?.[0] ?? result.updatedFolderInternalIds?.[0];
 		setCreationSession(null);
 		creationRestoreFocusRef.current = null;
 		setMobileLevelOverride(nodeType === "collection" ? "collections" : "folders");
-		if (internalId) setCreatedCardTarget({ nodeType, internalId });
+		if (internalId) {
+			if (nodeType === "folder") setPendingCreatedFolderFocus(internalId);
+			else setCreatedCardTarget({ nodeType, internalId });
+		}
 		setCreationStatusText("");
-		queueMicrotask(() => setCreationStatusText(`Created ${result.counts.folderCount} People folder${result.counts.folderCount === 1 ? "" : "s"} with ${result.counts.sourceCount} source${result.counts.sourceCount === 1 ? "" : "s"}.`));
+		queueMicrotask(() => setCreationStatusText(`Added ${result.counts.sourceCount} source${result.counts.sourceCount === 1 ? "" : "s"} across ${result.counts.folderCount + result.counts.existingFolderAdditionCount} folder${result.counts.folderCount + result.counts.existingFolderAdditionCount === 1 ? "" : "s"}.`));
 		return result;
 	}
 
@@ -1543,13 +1547,16 @@ export function BuilderWorkspace({
 		const result = applyStudioHierarchyPlan(controller, plan);
 		if (!result.ok) return result;
 		const nodeType = creationSession.scope === "new-collection" ? "collection" : "folder";
-		const internalId = nodeType === "collection" ? result.createdCollectionInternalIds?.[0] : result.createdFolderInternalIds?.[0];
+		const internalId = nodeType === "collection" ? result.createdCollectionInternalIds?.[0] : result.createdFolderInternalIds?.[0] ?? result.updatedFolderInternalIds?.[0];
 		setCreationSession(null);
 		creationRestoreFocusRef.current = null;
 		setMobileLevelOverride(nodeType === "collection" ? "collections" : "folders");
-		if (internalId) setCreatedCardTarget({ nodeType, internalId });
+		if (internalId) {
+			if (nodeType === "folder") setPendingCreatedFolderFocus(internalId);
+			else setCreatedCardTarget({ nodeType, internalId });
+		}
 		setCreationStatusText("");
-		queueMicrotask(() => setCreationStatusText(`Created ${result.counts.folderCount} Studio folder${result.counts.folderCount === 1 ? "" : "s"} with ${result.counts.sourceCount} source${result.counts.sourceCount === 1 ? "" : "s"}.`));
+		queueMicrotask(() => setCreationStatusText(`Added ${result.counts.sourceCount} source${result.counts.sourceCount === 1 ? "" : "s"} across ${result.counts.folderCount + result.counts.existingFolderAdditionCount} folder${result.counts.folderCount + result.counts.existingFolderAdditionCount === 1 ? "" : "s"}.`));
 		return result;
 	}
 
@@ -1558,13 +1565,16 @@ export function BuilderWorkspace({
 		const result = applyNetworkHierarchyPlan(controller, plan);
 		if (!result.ok) return result;
 		const nodeType = creationSession.scope === "new-collection" ? "collection" : "folder";
-		const internalId = nodeType === "collection" ? result.createdCollectionInternalIds?.[0] : result.createdFolderInternalIds?.[0];
+		const internalId = nodeType === "collection" ? result.createdCollectionInternalIds?.[0] : result.createdFolderInternalIds?.[0] ?? result.updatedFolderInternalIds?.[0];
 		setCreationSession(null);
 		creationRestoreFocusRef.current = null;
 		setMobileLevelOverride(nodeType === "collection" ? "collections" : "folders");
-		if (internalId) setCreatedCardTarget({ nodeType, internalId });
+		if (internalId) {
+			if (nodeType === "folder") setPendingCreatedFolderFocus(internalId);
+			else setCreatedCardTarget({ nodeType, internalId });
+		}
 		setCreationStatusText("");
-		queueMicrotask(() => setCreationStatusText(`Created ${result.counts.folderCount} Network folder${result.counts.folderCount === 1 ? "" : "s"} with ${result.counts.sourceCount} source${result.counts.sourceCount === 1 ? "" : "s"}.`));
+		queueMicrotask(() => setCreationStatusText(`Added ${result.counts.sourceCount} source${result.counts.sourceCount === 1 ? "" : "s"} across ${result.counts.folderCount + result.counts.existingFolderAdditionCount} folder${result.counts.folderCount + result.counts.existingFolderAdditionCount === 1 ? "" : "s"}.`));
 		return result;
 	}
 
@@ -1783,6 +1793,7 @@ export function BuilderWorkspace({
 			folderInternalId: visibleAddSourceSession.folderInternalId,
 			network: bundle.network,
 			draft: bundle.draft,
+			drafts: bundle.drafts,
 			duplicateOverrideIdentity: bundle.duplicateOverrideIdentity,
 			interactionLocked: (
 				editorLocked
@@ -1797,7 +1808,7 @@ export function BuilderWorkspace({
 		setAddSourceSession(null);
 		setPendingCreatedSourceFocus(result.createdSourceInternalIds[0]);
 		setSourceCreationStatusText("");
-		queueMicrotask(() => setSourceCreationStatusText(`Added Network Series source for “${bundle.network.name}”.`));
+		queueMicrotask(() => setSourceCreationStatusText(`Added ${result.addedSourceCount} Network Series source${result.addedSourceCount === 1 ? "" : "s"} for “${bundle.network.name}”.`));
 		return result;
 	}
 

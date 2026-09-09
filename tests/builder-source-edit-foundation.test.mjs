@@ -505,16 +505,18 @@ test("newly touched titles are validated while unusual untouched imported titles
 	assert.equal(serialize(untouchedController).value[0].folders[0].sources[0].title, null);
 });
 
-test("People sort inventory is limited to the stable v1 values for each media type", () => {
+test("People scalar editor exposes the four evidenced native sort values for each media type", () => {
 	assert.deepEqual(peopleSortOptions("MOVIE"), [
 		{ id: "popular", label: "Popular", value: "popularity.desc" },
 		{ id: "recent", label: "Recent", value: "primary_release_date.desc" },
 		{ id: "top-rated", label: "Top rated", value: "vote_average.desc" },
+		{ id: "most-votes", label: "Most voted", value: "vote_count.desc" },
 	]);
 	assert.deepEqual(peopleSortOptions("TV"), [
 		{ id: "popular", label: "Popular", value: "popularity.desc" },
 		{ id: "recent", label: "Recent", value: "first_air_date.desc" },
 		{ id: "top-rated", label: "Top rated", value: "vote_average.desc" },
+		{ id: "most-votes", label: "Most voted", value: "vote_count.desc" },
 	]);
 	assert.deepEqual(sourceEditorFor({
 		nodeType: "source",
@@ -616,7 +618,7 @@ test("Studio duplicate review ignores self but rejects another conflicting physi
 	assert.equal(saveSourceEdit(single, opened.session, updateStudioSourceSort(opened.draft, "vote_count.desc")).ok, true);
 
 	const duplicated = createController();
-	importFolder(duplicated, [studioSource(), studioSource({ title: "Imported duplicate" })]);
+	importFolder(duplicated, [studioSource(), studioSource({ title: "Imported duplicate", sortBy: "vote_count.desc" })]);
 	opened = sessionFor(duplicated, 0);
 	const before = serialize(duplicated);
 	const rejected = saveSourceEdit(

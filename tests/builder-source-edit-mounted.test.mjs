@@ -67,6 +67,9 @@ async function runMountedPage() {
 	const sourceDetailsOnly = process.env.TMDB_SOURCE_DETAILS_ONLY === "1";
 	const roundTripOnly = process.env.TMDB_SOURCE_ROUND_TRIP_ONLY === "1";
 	const wordingOnly = process.env.TMDB_SOURCE_SORT_WORDING_ONLY === "1";
+	const sourceLevelOnly = process.env.TMDB_NATIVE_SOURCE_LEVEL_ONLY === "1";
+	const noticeStyleOnly = process.env.TMDB_NOTICE_STYLE_ONLY === "1";
+	const nativeVariantsOnly = process.env.TMDB_NATIVE_SOURCE_VARIANTS_ONLY === "1" || sourceLevelOnly || noticeStyleOnly;
 	const multiSortOnly = process.env.TMDB_SOURCE_SORT_VARIANTS_ONLY === "1" || wordingOnly;
 	const devToolsStartupMs = resolveDevToolsStartupTimeout(process.env.DEVTOOLS_STARTUP_MS);
 	const resources = {
@@ -176,7 +179,7 @@ async function runMountedPage() {
 		await resources.pageConnection.command("Runtime.enable");
 		const address = resources.vite.httpServer.address();
 		await resources.pageConnection.command("Page.navigate", {
-			url: `http://127.0.0.1:${address.port}/tests/fixtures/builder-source-edit-mounted.html${multiSortOnly ? "?source-sort-variants-only" : roundTripOnly ? "?source-round-trip-only" : sourceDetailsOnly ? "?source-details-only" : ""}`,
+			url: `http://127.0.0.1:${address.port}/tests/fixtures/builder-source-edit-mounted.html${nativeVariantsOnly ? "?native-source-variants-only" : multiSortOnly ? "?source-sort-variants-only" : roundTripOnly ? "?source-round-trip-only" : sourceDetailsOnly ? "?source-details-only" : ""}`,
 		});
 		const deadline = Date.now() + 30000;
 		while (Date.now() < deadline) {
@@ -186,6 +189,55 @@ async function runMountedPage() {
 			});
 			const result = evaluated.result?.value;
 			if (result?.status === "complete") {
+				if (nativeVariantsOnly) {
+					const captures = [];
+					resources.pageConnection.onEvent((message) => {
+						if (message.method !== "Runtime.bindingCalled" || message.params.name !== "captureNativePreview") return;
+						const name = JSON.parse(message.params.payload).name;
+						const output = path.join(os.tmpdir(), "dingo-200-" + name + ".png");
+						resources.pageConnection.command("Page.captureScreenshot", { format: "png" })
+							.then(async ({ data }) => { await fsPromises.writeFile(output, Buffer.from(data, "base64")); captures.push(output); })
+							.finally(() => resources.pageConnection.command("Runtime.evaluate", { expression: "window.__finishNativeCapture()" }));
+					});
+					await resources.pageConnection.command("Runtime.addBinding", { name: "captureNativePreview" });
+					const matrix = ["people", "studio", "network"].flatMap((family) => ["add", "new-collection", "new-folder"].map((scope) => ({ family, scope, width: 393, height: 852 })));
+					matrix.push(
+						{ family: "people", scope: "add", width: 360, height: 800 },
+						{ family: "studio", scope: "new-collection", width: 384, height: 800 },
+						{ family: "network", scope: "new-folder", width: 402, height: 800 },
+						{ family: "people", scope: "new-folder", width: 412, height: 800 },
+						...["people", "studio", "network"].flatMap((family) => [
+							{ family, scope: "add", width: 1280, height: 900 },
+							{ family, scope: "new-collection", width: 393, height: 320 },
+						]),
+						{ family: "studio", scope: "add", width: 393, height: 800, forcedColors: true },
+					);
+					if (sourceLevelOnly) matrix.splice(0, matrix.length,
+						...["people", "studio", "network"].flatMap((family) => [
+							{ family, scope: "new-folder", width: 393, height: 480, sourceLevel: true, representation: "complete", singleEntity: true },
+							{ family, scope: "new-folder", width: 1280, height: 900, sourceLevel: true, representation: "partial" },
+						]),
+						{ family: "people", scope: "new-folder", width: 360, height: 600, sourceLevel: true, representation: "partial" },
+						{ family: "studio", scope: "new-folder", width: 384, height: 600, sourceLevel: true, representation: "partial" },
+						{ family: "network", scope: "new-folder", width: 402, height: 600, sourceLevel: true, representation: "partial" },
+						{ family: "people", scope: "new-folder", width: 412, height: 600, sourceLevel: true, representation: "partial" },
+					);
+					if (noticeStyleOnly) matrix.splice(0, matrix.length,
+						{ family: "studio", scope: "add", width: 393, height: 480, noticeStyle: true },
+						{ family: "studio", scope: "add", width: 1280, height: 900, noticeStyle: true },
+						{ family: "people", scope: "new-folder", width: 360, height: 600, sourceLevel: true, representation: "complete", singleEntity: true, noticeStyle: true },
+					);
+					const nativeVariants = [];
+					for (const view of matrix) {
+						await resources.pageConnection.command("Emulation.setDeviceMetricsOverride", { width: view.width, height: view.height, deviceScaleFactor: 1, mobile: view.width < 900 });
+						await resources.pageConnection.command("Emulation.setEmulatedMedia", { features: [{ name: "forced-colors", value: view.forcedColors ? "active" : "none" }] });
+						const checked = await resources.pageConnection.command("Runtime.evaluate", { expression: "window.__runNativeSourceVariantsScenario(" + JSON.stringify(view) + ")", awaitPromise: true, returnByValue: true });
+						if (checked.exceptionDetails) throw new Error(checked.exceptionDetails.exception?.description ?? checked.exceptionDetails.text);
+						nativeVariants.push(checked.result.value);
+					}
+					await fsPromises.writeFile(path.join(os.tmpdir(), noticeStyleOnly ? "dingo-200-notice-results.json" : sourceLevelOnly ? "dingo-200-source-level-results.json" : "dingo-200-live-results.json"), JSON.stringify({ nativeVariants, captures }, null, 2));
+					return { nativeVariants, captures };
+				}
 				if (multiSortOnly) {
 					const interceptionErrors = [];
 					// Isolated #198 controlled-response mode only. No live-service claim.
@@ -770,6 +822,42 @@ async function runMountedPage() {
 	return execution.value;
 }
 
+test("mounted native variants production integration covers nine entry contexts and scalar editors", { skip: process.env.TMDB_NATIVE_SOURCE_VARIANTS_ONLY !== "1" }, () => {
+	assert.equal(mountedResults.nativeVariants.length, 20);
+	for (const result of mountedResults.nativeVariants) {
+		assert.equal(result.created, true, result.name);
+		assert.equal(result.previewIndependent, true, result.name);
+		assert.equal(result.cacheReused, true, result.name);
+		assert.equal(result.editorVerified, true, result.name);
+		assert.deepEqual(result.errors, [], result.name);
+	}
+	console.log("NATIVE_VARIANTS_LIVE " + JSON.stringify(mountedResults));
+});
+
+test("mounted native source-level folder batches use production integration", { skip: process.env.TMDB_NATIVE_SOURCE_LEVEL_ONLY !== "1" }, () => {
+	assert.equal(mountedResults.nativeVariants.length, 10);
+	for (const result of mountedResults.nativeVariants) {
+		assert.equal(result.created, true, result.name);
+		assert.equal(result.placementEvidence.choicesPreserved, true, result.name);
+		assert.equal(result.placementEvidence.keyboardReachable, true, result.name);
+		assert.equal(result.previewIndependent, true, result.name);
+		assert.equal(result.cacheReused, true, result.name);
+		assert.deepEqual(result.errors, [], result.name);
+	}
+	console.log("NATIVE_SOURCE_LEVEL_LIVE " + JSON.stringify(mountedResults));
+});
+
+test("mounted notices retain even borders and accessible actions on desktop and phones", { skip: process.env.TMDB_NOTICE_STYLE_ONLY !== "1" }, () => {
+	assert.equal(mountedResults.nativeVariants.length, 3);
+	for (const result of mountedResults.nativeVariants) {
+		assert.deepEqual(result.noticeEvidence.map((entry) => entry.label), result.scope === "add" ? ["warning", "elsewhere", "error"] : ["warning", "error"]);
+		assert.equal(result.created, true);
+		assert.equal(result.editorVerified, true);
+		assert.deepEqual(result.errors, []);
+	}
+	console.log("NOTICE_STYLE_LIVE " + JSON.stringify(mountedResults));
+});
+
 let mountedResults;
 before(async () => {
 	mountedResults = await runMountedPage();
@@ -1018,7 +1106,7 @@ test("mounted Genre hierarchy preserves browse-first focus, configuration state,
 			visibleCountsOmitSources: true,
 			structureCopy: {
 				"genre-folders": { title: "Genre folders", description: "One folder card for each Genre, with its available Movies and Series sources together inside." },
-				"media-folders": { title: "Movies & Series folders", description: "Create Movies and Series folder cards as needed, with Genre sources inside each." },
+				"media-folders": { title: "Movies + Series folders", description: "Create Movies and Series folder cards as needed, with Genre sources inside each." },
 				"separate-media-genre-folders": { title: "Separate Movie & Series Genre folders", description: "Create separate folder cards for each Movie and Series Genre." },
 				"separate-media-collections": { title: "Separate Movie & Series collections", description: "Create one Home collection for Movie Genres and another for Series Genres." },
 			},
@@ -1773,7 +1861,7 @@ test("mounted People Configure stays compact, editable, preview-safe, and overfl
 		assert.equal(result.layout.pillCount, 8, `${width}px row pills`);
 		assert.equal(result.layout.pillColumns, width <= 520 ? 2 : 4, `${width}px pill columns`);
 		assert.equal(result.layout.pillsFit, true, `${width}px pill fit`);
-		assert.equal(result.layout.sortChoices, 3, `${width}px sorts`);
+		assert.equal(result.layout.sortChoices, 4, `${width}px sorts`);
 		assert.equal(result.layout.previewActions, 2, `${width}px preview actions`);
 		assert.equal(result.layout.listBounded, true, `${width}px bounded list`);
 		assert.equal(result.layout.continueReachable, true, `${width}px Continue`);
@@ -1784,8 +1872,8 @@ test("mounted People Configure stays compact, editable, preview-safe, and overfl
 		assert.equal(result.preview.genuineTmdbSources, true, `${width}px genuine TMDB Movie poster sources`);
 		assert.equal(result.preview.modalSurface, true, `${width}px preview modal`);
 		assert.equal(result.preview.outsidePeopleRow, true, `${width}px preview outside row flow`);
-		assert.equal(result.preview.gridColumns, 5, `${width}px preview columns`);
-		assertTitlePreviewGeometry(result.preview.geometry, { width, phoneColumns: 5, label: `${width}px People Preview` });
+		assert.equal(result.preview.gridColumns, width <= 520 ? 3 : 5, `${width}px preview columns`);
+		assertTitlePreviewGeometry(result.preview.geometry, { width, phoneColumns: 3, label: `${width}px People Preview` });
 		assert.equal(result.preview.posterOnly, true, `${width}px poster-only`);
 		assert.equal(result.preview.noHorizontalOverflow, true, `${width}px preview overflow`);
 		assert.equal(result.preview.headingFocused, true, `${width}px preview focus`);
@@ -2138,7 +2226,7 @@ test("mounted Network Preview uses the live Worker, TMDB, and image CDN with tra
 		assert.match(result.popular.request.contentType, /application\/json/i, `${width}px live Popular JSON response`);
 		assert.equal(Number.isSafeInteger(result.popular.request.totalResults) && result.popular.request.totalResults >= 0, true, `${width}px numeric volatile total_results`);
 		const popularCountLine = `Series Count: ${result.popular.request.totalResults.toLocaleString("en")}`;
-		assert.equal(result.popular.modalCountLine, popularCountLine, `${width}px Preview count corresponds to cloned live response`);
+		assert.equal(result.popular.modalCountLine, `Popular Series · ${result.popular.request.totalResults.toLocaleString("en")} titles`, `${width}px Preview count corresponds to cloned live response`);
 		assert.deepEqual(result.popular.configureCountLines, [popularCountLine], `${width}px live total supersedes the catalogue value on one Configure line`);
 		assert.equal(result.popular.expectedVisibleCount, Math.min(maximumPosterCount, result.popular.preview.availablePosterCount), `${width}px dynamic real-resource poster bound`);
 		assert.equal(result.popular.preview.visiblePosterCount, result.popular.expectedVisibleCount, `${width}px bounded Popular posters`);
@@ -2184,7 +2272,7 @@ test("mounted Network Preview uses the live Worker, TMDB, and image CDN with tra
 		assert.equal(Number.isSafeInteger(result.recent.request.totalResults) && result.recent.request.totalResults >= 0, true, `${width}px Recent numeric volatile total_results`);
 		assert.deepEqual(result.recent.countAfterSortBeforePreview, [popularCountLine], `${width}px sort does not revert learned count`);
 		const recentCountLine = `Series Count: ${result.recent.request.totalResults.toLocaleString("en")}`;
-		assert.equal(result.recent.modalCountLine, recentCountLine, `${width}px Recent Preview total correspondence`);
+		assert.equal(result.recent.modalCountLine, `Recent Series · ${result.recent.request.totalResults.toLocaleString("en")} titles`, `${width}px Recent Preview total correspondence`);
 		assert.deepEqual(result.recent.configureCountLines, [recentCountLine], `${width}px one Recent live count line`);
 		assert.equal(result.recent.expectedVisibleCount, Math.min(maximumPosterCount, result.recent.preview.availablePosterCount), `${width}px dynamic Recent real-resource bound`);
 		assert.equal(result.recent.preview.visiblePosterCount, result.recent.expectedVisibleCount, `${width}px bounded Recent posters`);
@@ -2703,21 +2791,21 @@ test("mounted ordinary Add Source Preview reaches exact live parity for six newl
 			selectors: families.people.selectorGroups,
 			counts: [families.people.requestCountBeforeOpen, families.people.requestCountAfterInitial, families.people.requestCountFinal],
 		}, {
-			label: "Movie Credits",
+			label: "Tom Hanks",
 			selectors: [
 				{ label: "Role", options: ["Acting", "Directing"], selected: "Acting" },
 				{ label: "Media", options: ["Movies", "Series"], selected: "Movies" },
 			],
 			counts: [1, 1, 1],
 		}, `${result.width}px People one-physical-source parity`);
-		assert.equal(families.people.switched.label, "Directed Movies");
+		assert.equal(families.people.switched.label, "Tom Hanks");
 		assert.match(families.people.requests[0], /^\/3\/person\/31(?:\?|$)/);
-		assert.deepEqual(families.people.sort.labels, ["Popular", "Recent", "Top rated"], `${result.width}px People exact Sort inventory`);
+		assert.deepEqual(families.people.sort.labels, ["Popular", "Recent", "Top rated", "Most voted"], `${result.width}px People exact Sort inventory`);
 		assert.equal(families.people.sort.defaultPopular, true, `${result.width}px People default Sort`);
 		assert.equal(families.people.sort.recentSelected, true, `${result.width}px People changed Sort`);
 		assert.equal(families.people.sort.retainedThroughConfiguration, true, `${result.width}px People Sort survives role/media changes`);
 		assert.equal(families.people.sort.restoredAfterBack, true, `${result.width}px People Sort survives Back and re-entry`);
-		assert.equal(families.people.sort.radioSemantics, true, `${result.width}px People Sort native radio semantics`);
+		assert.equal(families.people.sort.checkboxSemantics, true, `${result.width}px People creation native checkbox semantics`);
 		assert.equal(families.people.sort.noHorizontalOverflow, true, `${result.width}px People Sort stays contained`);
 		assert.deepEqual(families.people.sort.savedSorts, [
 			"primary_release_date.desc",
@@ -2943,7 +3031,7 @@ test("mounted Decade Add Source exact Preview uses the deployed Worker, TMDB, an
 test("mounted Title Previews stay centred and use one scroll owner on a deliberately short phone viewport", () => {
 	const result = mountedResults.shortHeightPreviewGeometry;
 	assert.deepEqual({ width: result.width, height: result.height }, { width: 393, height: 320 });
-	assertTitlePreviewGeometry(result.people, { width: 393, phoneColumns: 5, short: true, label: "393x320 People Preview" });
+	assertTitlePreviewGeometry(result.people, { width: 393, phoneColumns: 3, short: true, label: "393x320 People Preview" });
 	assertTitlePreviewGeometry(result.sourceEdit, { width: 393, short: true, label: "393x320 Source Edit Preview" });
 	const normalPeople = mountedResults.peopleConfigureWidths.find((entry) => entry.layout.width === 393).preview.geometry;
 	const normalSourceEdit = mountedResults.sourceEditLivePreviewWidths.find((entry) => entry.width === 393).geometry;

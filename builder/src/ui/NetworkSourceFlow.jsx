@@ -1,7 +1,9 @@
+import { useSourceTitlePreview } from "./use-source-title-preview.js";
+import { SourceVariantReview } from "./SourceVariantReview.jsx";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-	buildNetworkSourceDraft,
+	buildNetworkSourceDrafts,
 	createAsyncRequestCoordinator,
 	createSourceSubmissionGate,
 	DEFAULT_NETWORK_SEARCH_SORT,
@@ -9,12 +11,10 @@ import {
 	formatNetworkLocation,
 	inspectNetworkSourceDuplicates,
 	networkDuplicateOverrideIdentity,
+	networkSourceVariantKey,
 	NETWORK_SERIES_COUNT_FILTER_OPTIONS,
 	NETWORK_SEARCH_SORTS,
 	NETWORK_SOURCE_MODE,
-	requestSourceTitlePreview,
-	sourceTitlePreviewProviderAvailable,
-	sourceTitlePreviewRequest,
 } from "../source-add/index.js";
 import {
 	lockAddSourceDocumentBody,
@@ -179,7 +179,7 @@ function networkCountText(count) {
 	return { text: "Checking Series Count…", state: "checking" };
 }
 
-export function NetworkConfigureStep({ network, count, duplicateReview, applyDiagnostic, sortOptionId, onSortChange }) {
+export function NetworkConfigureStep({ network, count, duplicateReview, applyDiagnostic, sortOptionIds = [DEFAULT_NETWORK_SORT_OPTION_ID], onSortChange }) {
 	const countDisplay = networkCountText(count);
 	const duplicate = duplicateReview.destination.length > 0;
 	return (
@@ -195,24 +195,24 @@ export function NetworkConfigureStep({ network, count, duplicateReview, applyDia
 				<TmdbEntityLink entityType="network" tmdbId={network.id} entityName={network.name} />
 			</div>
 			<div className="studio-edit-source-card network-series-card" data-count-state={countDisplay.state}>
-				<span><strong>Series</strong><small>One Network Series source</small></span>
+				<span><strong>Series</strong><small>Network Series sources</small></span>
 				<em>{countDisplay.text}</em>
 				<TmdbKnownZeroNotice count={count} entity="network" media="series" canStillAdd />
 			</div>
-			{duplicate ? <p className="studio-duplicate-note network-duplicate-note" role="status" data-network-duplicate-warning="true">Series already exists in this folder.</p> : null}
-			<NetworkSortChoices selectedId={sortOptionId} name="network-configure-sort" onChange={onSortChange} />
+			{duplicate ? <p className="studio-duplicate-note network-duplicate-note" role="status" data-network-duplicate-warning="true">Some configured Series sources already exist in this folder. Add includes only missing variants.</p> : null}
+			<NetworkSortChoices selectedIds={sortOptionIds} name="network-configure-sort" onChange={onSortChange} />
 			<SourceElsewhereNotice occurrences={duplicateReview.elsewhere} />
 		</section>
 	);
 }
 
-export function NetworkConfigureActions({ duplicate, isApplying = false, onAddAnyway }) {
+export function NetworkConfigureActions({ duplicate, primaryCount = 0, configuredCount = 0, isApplying = false, onAddAnyway }) {
 	return (
 		<footer className="add-source-actions studio-configure-actions network-configure-actions">
-			{duplicate
+			{duplicate && primaryCount === 0
 				? <span className="studio-no-missing-sources">No new sources to add</span>
-				: <button className="editor-apply" type="submit" disabled={isApplying}>{isApplying ? "Adding…" : "Add 1 source"}</button>}
-			{duplicate ? <button className="editor-cancel studio-add-all" type="button" disabled={isApplying} data-action="add-network-anyway" onClick={onAddAnyway}>Add anyway</button> : null}
+				: <button className="editor-apply" type="submit" disabled={isApplying || primaryCount === 0}>{isApplying ? "Adding…" : `Add ${primaryCount} source${primaryCount === 1 ? "" : "s"}`}</button>}
+			{duplicate && configuredCount > 0 ? <button className="editor-cancel studio-add-all" type="button" disabled={isApplying} data-action="add-network-anyway" onClick={onAddAnyway}>Add all anyway</button> : null}
 		</footer>
 	);
 }
@@ -221,10 +221,11 @@ export function NetworkSourceFlow({ catalogueProvider, countProvider, previewPro
 	const [navigation, setNavigation] = useState(createNetworkSourceNavigationState);
 	const [selectedNetwork, setSelectedNetwork] = useState(null);
 	const [count, setCount] = useState(INITIAL_NETWORK_COUNT);
-	const [sortOptionId, setSortOptionId] = useState(DEFAULT_NETWORK_SORT_OPTION_ID);
+	const [sortOptionIds, setSortOptionIds] = useState([DEFAULT_NETWORK_SORT_OPTION_ID]);
 	const [applyDiagnostic, setApplyDiagnostic] = useState(null);
 	const [isApplying, setIsApplying] = useState(false);
-	const [preview, setPreview] = useState(null);
+	const titlePreview = useSourceTitlePreview("network", { network: previewProvider });
+	const preview = titlePreview.preview;
 	const [viewportStyle, setViewportStyle] = useState(() => typeof window === "undefined" ? null : resolveAddSourceViewportStyle(window));
 	const dialogRef = useRef(null);
 	const scrollRef = useRef(null);
@@ -232,30 +233,24 @@ export function NetworkSourceFlow({ catalogueProvider, countProvider, previewPro
 	const configureRef = useRef(null);
 	const countCoordinatorRef = useRef(null);
 	const submissionGateRef = useRef(null);
-	const previewTriggerRef = useRef(null);
-	const previewCoordinatorRef = useRef(null);
 	if (!countCoordinatorRef.current) countCoordinatorRef.current = createAsyncRequestCoordinator();
 	if (!submissionGateRef.current) submissionGateRef.current = createSourceSubmissionGate();
-	if (!previewCoordinatorRef.current) previewCoordinatorRef.current = createAsyncRequestCoordinator();
 
 	const search = useNetworkCatalogueSearch(catalogueProvider, { seriesCountFilters: true });
-	const duplicateReview = selectedNetwork
-		? inspectNetworkSourceDuplicates(project, folder?.internalId ?? null, selectedNetwork.id)
-		: { destination: [], elsewhere: [] };
-	const draftResult = selectedNetwork ? buildNetworkSourceDraft(selectedNetwork, { sortOptionId }) : { ok: false, draft: null, errors: [] };
+	const draftResult = selectedNetwork ? buildNetworkSourceDrafts(selectedNetwork, { sortOptionIds }) : { ok: false, drafts: [], errors: [] };
+	const duplicateReview = inspectNetworkSourceDuplicates(project, folder?.internalId ?? null, draftResult.ok ? draftResult.drafts : []);
 	const duplicate = duplicateReview.destination.length > 0;
 	const step = navigation.step;
 
 	usePrePaintLayoutEffect(() => {
 		const unlockBody = lockAddSourceDocumentBody();
 		const stopViewport = observeAddSourceViewport(setViewportStyle);
-		focusElementWithoutScroll(inputRef.current ?? dialogRef.current);
+		focusElementWithoutScroll(dialogRef.current);
 		return () => { stopViewport(); unlockBody(); };
 	}, []);
 
 	useEffect(() => () => {
 		countCoordinatorRef.current.cancel({ notify: false });
-		previewCoordinatorRef.current.cancel({ notify: false });
 	}, []);
 
 	useEffect(() => {
@@ -285,7 +280,7 @@ export function NetworkSourceFlow({ catalogueProvider, countProvider, previewPro
 	function selectNetwork(network) {
 		countCoordinatorRef.current.cancel({ notify: false });
 		setSelectedNetwork(network);
-		setSortOptionId(DEFAULT_NETWORK_SORT_OPTION_ID);
+		setSortOptionIds([DEFAULT_NETWORK_SORT_OPTION_ID]);
 		setApplyDiagnostic(null);
 		setNavigation((current) => enterNetworkConfigure(current, network.id, scrollRef.current?.scrollTop ?? 0));
 		loadCount(network);
@@ -311,8 +306,8 @@ export function NetworkSourceFlow({ catalogueProvider, countProvider, previewPro
 		try {
 			result = await onApply({
 				network: selectedNetwork,
-				draft: draftResult.draft,
-				duplicateOverrideIdentity: addAnyway ? networkDuplicateOverrideIdentity(folder.internalId, draftResult.draft) : null,
+				drafts: draftResult.drafts,
+				duplicateOverrideIdentity: addAnyway ? networkDuplicateOverrideIdentity(folder.internalId, draftResult.drafts) : null,
 			});
 		} catch {
 			result = { ok: false, errors: [{ message: "The Network source could not be added. Try again." }] };
@@ -328,41 +323,10 @@ export function NetworkSourceFlow({ catalogueProvider, countProvider, previewPro
 		applyNetworkSource(false);
 	}
 
-	function networkPreviewCandidate() {
-		return draftResult.ok ? Object.freeze({ sourceDraft: draftResult.draft, request: sourceTitlePreviewRequest("network", draftResult.draft) }) : null;
-	}
-
-	async function loadPreview(candidate) {
-		setPreview({ status: "loading", candidate, data: null, error: null });
-		const outcome = await previewCoordinatorRef.current.run(
-			({ signal }) => requestSourceTitlePreview(candidate.request, { network: previewProvider }, signal),
-			"network",
-		);
-		if (!outcome.accepted) return;
-		if (outcome.result?.ok) setPreview({ status: "ready", candidate, data: outcome.result.data, error: null });
-		else if (outcome.result?.error?.kind !== "aborted") setPreview({ status: "error", candidate, data: null, error: outcome.result?.error });
-	}
-
-	function openPreview(event) {
-		const candidate = networkPreviewCandidate();
-		if (!candidate || isApplying) return;
-		previewTriggerRef.current = event.currentTarget;
-		loadPreview(candidate);
-	}
-
-	function closePreview() {
-		previewCoordinatorRef.current.cancel({ notify: false });
-		setPreview(null);
-		const trigger = previewTriggerRef.current;
-		previewTriggerRef.current = null;
-		window.requestAnimationFrame(() => focusElementWithoutScroll(trigger));
-	}
-
 	const cancel = () => {
 		if (!isApplying && !submissionGateRef.current.isActive()) onCancel();
 	};
-	const previewRequest = draftResult.ok ? sourceTitlePreviewRequest("network", draftResult.draft) : null;
-	const previewAvailable = sourceTitlePreviewProviderAvailable(previewRequest, { network: previewProvider });
+	const previewAvailable = draftResult.ok && titlePreview.available(draftResult.drafts);
 	const content = (
 		<div className="add-source-portal" data-add-source-portal="true" data-mobile-surface="opaque">
 			<div className="settings-modal-backdrop add-source-backdrop" data-add-source-modal-backdrop="true" data-backdrop-dismiss="false" style={viewportStyle ?? undefined}>
@@ -373,7 +337,7 @@ export function NetworkSourceFlow({ catalogueProvider, countProvider, previewPro
 							<div><h2 id="network-source-title">Add Network</h2><p>{folder?.editable?.title || "Selected folder"}</p></div>
 							<button className="add-source-header-action add-source-close-action" type="button" aria-label="Close Add Network" disabled={isApplying} onClick={cancel}>Close</button>
 						</div>
-						<p id="network-source-description" className="add-source-heading-description">{step === NETWORK_SOURCE_STEPS.SEARCH ? "Find a Network to add to this folder." : "Review this Network Series source."}</p>
+						<p id="network-source-description" className="add-source-heading-description">{step === NETWORK_SOURCE_STEPS.SEARCH ? "Find a Network to add to this folder." : "Choose the Network Series sources to create."}</p>
 					</header>
 					<form className="add-source-form" data-network-source-form-step={step} onSubmit={submit} noValidate inert={preview || undefined} aria-hidden={preview ? "true" : undefined}>
 						<div ref={scrollRef} className="add-source-scroll">
@@ -381,16 +345,17 @@ export function NetworkSourceFlow({ catalogueProvider, countProvider, previewPro
 								<NetworkSearchStep input={search.input} inputRef={inputRef} parsedInput={search.parsedInput} lookupState={search.lookupState} searchData={search.searchData} effectiveSearchSort={search.effectiveSearchSort} browsing={search.browsing} seriesCountFilter={search.seriesCountFilter} showSeriesCountFilters selectedNetworkId={selectedNetwork?.id ?? null} onInputChange={handleSearchInputChange} onSortChange={search.toggleSearchSort} onSeriesCountFilterChange={search.changeSeriesCountFilter} onRetry={search.retrySearch} onSelect={selectNetwork} onChangePage={search.setPage} />
 							) : (
 								<div ref={configureRef} className="studio-configure-focus-target" tabIndex={-1}>
-									<NetworkConfigureStep network={selectedNetwork} count={count} duplicateReview={duplicateReview} applyDiagnostic={applyDiagnostic} sortOptionId={sortOptionId} onSortChange={(optionId) => { setSortOptionId(optionId); setApplyDiagnostic(null); }} />
-									<div className="source-edit-preview-action genre-hierarchy-configure-row-actions"><button type="button" aria-haspopup="dialog" data-action="preview-add-network" disabled={!previewAvailable || isApplying} onClick={openPreview}>Preview titles</button>{!previewAvailable ? <p className="editor-field-help">Preview is unavailable right now.</p> : null}</div>
+									<NetworkConfigureStep network={selectedNetwork} count={count} duplicateReview={duplicateReview} applyDiagnostic={applyDiagnostic} sortOptionIds={sortOptionIds} onSortChange={(optionId) => { setSortOptionIds(optionId); setApplyDiagnostic(null); }} />
+									<SourceVariantReview drafts={draftResult.drafts} review={duplicateReview} variantKey={networkSourceVariantKey} />
+									<div className="source-edit-preview-action genre-hierarchy-configure-row-actions"><button type="button" aria-haspopup="dialog" data-action="preview-add-network" disabled={!previewAvailable || isApplying} onClick={(event) => titlePreview.open(draftResult.drafts, { trigger: event.currentTarget, label: selectedNetwork.name })}>Preview titles</button>{!previewAvailable ? <p className="editor-field-help">Preview is unavailable right now.</p> : null}</div>
 								</div>
 							)}
 						</div>
-						{step === NETWORK_SOURCE_STEPS.CONFIGURE ? <NetworkConfigureActions duplicate={duplicate} isApplying={isApplying} onAddAnyway={() => applyNetworkSource(true)} /> : null}
+						{step === NETWORK_SOURCE_STEPS.CONFIGURE ? <NetworkConfigureActions duplicate={duplicate} primaryCount={duplicateReview.counts.toAdd} configuredCount={duplicateReview.counts.configured} isApplying={isApplying} onAddAnyway={() => applyNetworkSource(true)} /> : null}
 					</form>
 				</section>
 			</div>
-			{preview ? <SourceTitlePreviewDialog preview={preview} titleId="network-add-preview-title" backdropProps={{ "data-network-add-preview-backdrop": "true" }} dialogProps={{ "data-network-add-preview": "true" }} onClose={closePreview} onRetry={() => loadPreview(preview.candidate)} /> : null}
+			{preview ? <SourceTitlePreviewDialog preview={preview} titleId="network-add-preview-title" backdropProps={{ "data-network-add-preview-backdrop": "true" }} dialogProps={{ "data-network-add-preview": "true" }} {...titlePreview.dialogProps} /> : null}
 		</div>
 	);
 	return typeof document === "undefined" ? content : createPortal(content, document.body);

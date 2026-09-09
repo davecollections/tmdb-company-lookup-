@@ -124,7 +124,11 @@ test("selected choices use structural card treatment without selection rails or 
 	assert.doesNotMatch(styles, /(?:data-selected|aria-selected|aria-pressed|is-selected|:has\([^)]*checked\))[^}]{0,260}(?:var\(--green\)|99 230 190|144 206 125)/s);
 	assert.match(styles, /@media \(forced-colors: active\)[\s\S]*border-color: Highlight[\s\S]*outline-color: Highlight/);
 
-	// Leading rails remain valid for semantic notices, not selectable state.
-	assert.match(styles, /\.studio-duplicate-note\s*\{[\s\S]*border-left: 2px solid/);
-	assert.match(styles, /\.studio-elsewhere-note\s*\{[\s\S]*border-left: 2px solid/);
+	// Semantic notices share an even full border, with no emphasized edge.
+	assert.match(styles, /\.add-source-duplicate-warning,\s*\.native-folder-duplicate-notice,\s*\.studio-duplicate-note,\s*\.genre-attention-note\s*\{[^}]*border: 1px solid rgb\(255 185 107 \/ 32%\)/);
+	for (const rule of styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+		if (!/notice|note|warning|diagnostic|error|alert/.test(rule[1])) continue;
+		assert.doesNotMatch(rule[2], /border-(?:left|inline-start)|inset \d+px 0 0/, rule[1].trim());
+	}
+	assert.match(styles, /\.studio-elsewhere-note\s*\{[^}]*border: 1px solid rgb\(67 207 238 \/ 24%\)/);
 });

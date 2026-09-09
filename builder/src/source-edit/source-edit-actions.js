@@ -185,15 +185,19 @@ export function useSelectedMovieCollectionName(draft) {
 		: draft;
 }
 
-function duplicateFor(folder, adapter, draft, session) {
-	const proposedIdentity = adapter.draftIdentity({ draft, session });
+function duplicateFor(folder, adapter, draft, session, originalSource) {
+	const candidate = typeof adapter.duplicateKey === "function"
+		? { ...originalSource, editable: { ...originalSource.editable, ...adapter.buildPatch({ draft, source: originalSource, session }) } }
+		: null;
+	const proposedIdentity = candidate ? adapter.duplicateKey(candidate) : adapter.draftIdentity({ draft, session });
+	if (candidate && proposedIdentity === adapter.duplicateKey(originalSource)) return null;
 	if (
 		proposedIdentity === null
-		|| (proposedIdentity === session.originalIdentity && adapter.checkCurrentIdentityDuplicates !== true)
+		|| (!candidate && proposedIdentity === session.originalIdentity && adapter.checkCurrentIdentityDuplicates !== true)
 	) return null;
 	for (const source of folder.sources) {
 		if (source.internalId === session.sourceInternalId) continue;
-		if (sourceIdentity(adapter, source) !== proposedIdentity) continue;
+		if ((candidate ? adapter.duplicateKey(source) : sourceIdentity(adapter, source)) !== proposedIdentity) continue;
 		return Object.freeze({
 			internalId: source.internalId,
 			identity: proposedIdentity,
@@ -272,7 +276,7 @@ export function saveSourceEdit(controller, session, draft) {
 	if (!validation.ok) {
 		return { ok: false, errors: validation.errors, warnings: [], validationFailed: true };
 	}
-	const duplicate = duplicateFor(exact.folder, adapter, draft, session);
+	const duplicate = duplicateFor(exact.folder, adapter, draft, session, exact.source);
 	if (duplicate !== null) {
 		return failure(
 			"SOURCE_EDIT_DUPLICATE_IDENTITY",

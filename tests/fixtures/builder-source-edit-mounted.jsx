@@ -1,4 +1,5 @@
 import { runSourceSortVariantsScenario, runExpandedDecadesScenario } from "./builder-source-sort-variants-mounted.jsx";
+import { runNativeSourceVariantsScenario } from "./builder-native-source-variants-mounted.jsx";
 import { act, createElement, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { createBuilderController } from "../../builder/src/application/index.js";
@@ -358,7 +359,8 @@ async function waitForReadyPosterGrid({
 		return await waitForMountedCondition(() => {
 			const previewElement = typeof preview === "string" ? document.querySelector(preview) : preview;
 			const grid = previewElement?.querySelector(gridSelector) ?? null;
-			const selectedTab = previewElement?.querySelector('[role="tab"][aria-selected="true"]') ?? null;
+			const selectedTabs = [...(previewElement?.querySelectorAll('[role="tab"][aria-selected="true"]') ?? [])];
+			const selectedTab = selectedTabs.find((tab) => tab.textContent.trim() === expectedSelectedTab) ?? selectedTabs[0] ?? null;
 			const images = grid ? [...grid.querySelectorAll(":scope > img")] : [];
 			const visibleImages = images.filter(visibleElement);
 			diagnostic = {
@@ -1413,7 +1415,7 @@ async function runGenreOverrideLabelsScenario() {
 	}
 }
 
-function MountedWorkspace({ controller }) {
+function MountedWorkspace({ controller, ...providers }) {
 	const state = useSyncExternalStore(controller.subscribe, controller.getState, controller.getState);
 	return createElement(BuilderWorkspace, {
 		controller,
@@ -1429,6 +1431,7 @@ function MountedWorkspace({ controller }) {
 		streamingCatalogueProvider: {},
 		peopleManifestClient: { peek() { return null; }, async load() { return { ok: false, error: { message: "Mounted manifest unavailable." } }; } },
 		artworkClient: {},
+		...providers,
 	});
 }
 
@@ -2317,7 +2320,7 @@ async function runStudioHierarchyScenario() {
 			initialCount: initialConfigureRows.length,
 			order: initialConfigureRows.map((row) => Number(row.dataset.studioId)),
 			countsPresent: initialConfigureRows.every((row) => row.textContent.includes("Movies ·")),
-			placementPresent: initialConfigureRows.every((row) => row.querySelector(".studio-configure-placement")?.textContent.includes("Ready to create")),
+			placementPresent: initialConfigureRows.every((row) => row.querySelector(".native-folder-placement-status")?.textContent.includes("New folder")),
 			previewActions: initialConfigureRows.filter((row) => row.querySelector('button[aria-haspopup="dialog"]')).length,
 			removeLabelsAccessible: initialConfigureRows.every((row) => /^Remove .+/.test(row.querySelector(".studio-configure-remove")?.getAttribute("aria-label") ?? "")),
 			disclosureAbsent: configure.querySelector(".studio-selected-disclosure") === null,
@@ -2391,6 +2394,7 @@ async function runStudioHierarchyScenario() {
 		await clickAndSettle(required(document.querySelector(".studio-preview-modal header button"), "Series Preview close"));
 		lazySeries.countRetained = /Series · [\d,]+/.test(configure.textContent);
 
+		await clickAndSettle(required(configure.querySelector('input[name="studio-hierarchy-sort"][value="popular"]'), "Clear Popular sort"));
 		await clickAndSettle(required(configure.querySelector('input[name="studio-hierarchy-sort"][value="recent"]'), "Recent sort"));
 		const countSurvivesSort = /Series · [\d,]+/.test(configure.textContent);
 		configurePreviewTrigger = required(configure.querySelector('.studio-configure-row button[aria-haspopup="dialog"]'), "Recent Preview action");
@@ -2415,6 +2419,7 @@ async function runStudioHierarchyScenario() {
 			&& readyRecentSeriesPosters.visibleImages.length === expectedPosterCount;
 		await clickAndSettle(required(document.querySelector(".studio-preview-modal header button"), "Recent Preview close"));
 		const recentSeriesCountRetained = /Series · [\d,]+/.test(configure.textContent);
+		await clickAndSettle(required(configure.querySelector('input[name="studio-hierarchy-sort"][value="recent"]'), "Clear Recent sort"));
 		await clickAndSettle(required(configure.querySelector('input[name="studio-hierarchy-sort"][value="popular"]'), "Popular sort"));
 		configurePreviewTrigger = required(configure.querySelector('.studio-configure-row button[aria-haspopup="dialog"]'), "restored Popular Preview action");
 		await clickAndSettle(configurePreviewTrigger);
@@ -2671,7 +2676,7 @@ async function runNetworkLivePreviewScenario() {
 		try {
 			return await waitForMountedCondition(() => {
 				const expectedSources = candidateSources.filter((source) => !failedImageSources.has(source)).slice(0, maxVisibleCount);
-				const grid = modal.querySelector(".network-preview-grid");
+				const grid = modal.querySelector(".source-edit-preview-grid");
 				const images = grid ? [...grid.querySelectorAll(":scope > img")] : [];
 				const visibleImages = images.filter(visibleElement);
 				const visibleSources = visibleImages.map((image) => image.currentSrc || image.src);
@@ -2722,7 +2727,7 @@ async function runNetworkLivePreviewScenario() {
 		const responsePosterPaths = safePosterPaths(request);
 		if (responsePosterPaths.length === 0) throw new Error(`${label} returned no usable real TMDB poster_path values: ${JSON.stringify(request)}`);
 		const modal = await waitForMountedCondition(
-			() => document.querySelector(".network-preview-modal"),
+			() => document.querySelector(".source-edit-preview-modal"),
 			{ label: `${label} modal`, timeoutMs: 20_000 },
 		);
 		const readyPosters = await waitForLivePosterGrid(modal, request, label);
@@ -2787,11 +2792,11 @@ async function runNetworkLivePreviewScenario() {
 				&& dialog.scrollWidth <= dialog.clientWidth
 				&& popularReady.modal.scrollWidth <= popularReady.modal.clientWidth,
 		};
-		const popularModalCount = popularReady.modal.querySelector(".network-preview-count")?.textContent.trim() ?? null;
+		const popularModalCount = popularReady.modal.querySelector(".studio-preview-single-media")?.textContent.trim() ?? null;
 		await clickAndSettle(required(popularReady.modal.querySelector("header button"), "Popular Preview Close action"));
 		const popularCountLines = countLines(row);
 		const popularClose = {
-			closed: document.querySelector(".network-preview-modal") === null,
+			closed: document.querySelector(".source-edit-preview-modal") === null,
 			exactFocusRestored: document.activeElement === previewTrigger,
 			outerStable: positionStable(beforePopular, outerPosition(dialog, scrollElement)),
 			configureIntact: dialog.querySelector('[data-network-hierarchy-stage="configure"]') !== null
@@ -2810,12 +2815,13 @@ async function runNetworkLivePreviewScenario() {
 			requestCount: requestsAfterCachedPopular,
 			cacheHit: requestsAfterCachedPopular === 1,
 			preview: cachedPopularReady.evidence,
-			escapeClosed: document.querySelector(".network-preview-modal") === null,
+			escapeClosed: document.querySelector(".source-edit-preview-modal") === null,
 			exactFocusRestored: document.activeElement === previewTrigger,
 			outerStable: positionStable(beforeCachedPopular, outerPosition(dialog, scrollElement)),
 		};
 
 		const recentSort = required(configure.querySelector('input[name="network-hierarchy-sort"][value="recent"]'), "Recent sort");
+		await clickAndSettle(popularSort);
 		await clickAndSettle(recentSort);
 		const countAfterSortBeforePreview = countLines(row);
 		previewTrigger = required(row.querySelector('button[aria-haspopup="dialog"]'), "Recent Preview trigger");
@@ -2824,17 +2830,18 @@ async function runNetworkLivePreviewScenario() {
 		await clickAndSettle(previewTrigger);
 		const recentRequest = await waitForRequest(1, "Live Network Recent Worker request");
 		const recentReady = await waitForPreview(recentRequest, `Live Network Recent Preview at ${window.innerWidth}px`);
-		const recentModalCount = recentReady.modal.querySelector(".network-preview-count")?.textContent.trim() ?? null;
+		const recentModalCount = recentReady.modal.querySelector(".studio-preview-single-media")?.textContent.trim() ?? null;
 		const responseSequencesDiffer = JSON.stringify(safePosterPaths(popularRequest)) !== JSON.stringify(safePosterPaths(recentRequest));
 		const previousSortNotShown = recentReady.evidence.exactResponseOrder;
 		await clickAndSettle(required(recentReady.modal.querySelector("header button"), "Recent Preview Close action"));
 		const recentCountLines = countLines(row);
 		const recentClose = {
-			closed: document.querySelector(".network-preview-modal") === null,
+			closed: document.querySelector(".source-edit-preview-modal") === null,
 			exactFocusRestored: document.activeElement === previewTrigger,
 			outerStable: positionStable(beforeRecent, outerPosition(dialog, scrollElement)),
 		};
 
+		await clickAndSettle(recentSort);
 		await clickAndSettle(popularSort);
 		const countAfterReturnToPopularBeforePreview = countLines(row);
 		previewTrigger = required(row.querySelector('button[aria-haspopup="dialog"]'), "restored Popular Preview trigger");
@@ -2881,7 +2888,7 @@ async function runNetworkLivePreviewScenario() {
 				matchesOriginalResponse: restoredPopularReady.evidence.orderedResponseCorrespondence && restoredPopularReady.evidence.exactResponseOrder,
 				countAfterReturnToPopularBeforePreview,
 				finalCountLines,
-				closed: document.querySelector(".network-preview-modal") === null,
+				closed: document.querySelector(".source-edit-preview-modal") === null,
 				exactFocusRestored: document.activeElement === previewTrigger,
 			},
 			instrumentation: {
@@ -4237,6 +4244,7 @@ async function runNetworkHierarchyScenario() {
 			popularDefault: configure.querySelector('input[name="network-hierarchy-sort"][value="popular"]')?.checked === true,
 			sortLabels: [...configure.querySelectorAll('input[name="network-hierarchy-sort"]')].map((input) => input.closest("label")?.querySelector("span")?.textContent.trim()),
 		};
+		await clickAndSettle(required(configure.querySelector('input[name="network-hierarchy-sort"][value="popular"]'), "Clear Popular sort"));
 		await clickAndSettle(required(configure.querySelector('input[name="network-hierarchy-sort"][value="recent"]'), "Recent sort"));
 		configureState.sortChangeRequestFree = previewCalls === 0;
 		await clickAndSettle(required(buttonContaining(dialog, "Continue to Appearance"), "Appearance action"));
@@ -4634,6 +4642,7 @@ async function runPeopleConfigureLayoutScenario() {
 
 		const recentSort = dialog.querySelector('input[name="people-hierarchy-sort"][value="recent"]');
 		if (recentSort === null) throw new Error(`Mounted People Recent sort missing at ${dialog.dataset.addSourceStep}: ${dialog.innerHTML.slice(-1200)}`);
+		await clickAndSettle(required(dialog.querySelector('input[name="people-hierarchy-sort"][value="popular"]'), "Clear Popular sort"));
 		await clickAndSettle(required(recentSort, "Recent sort"));
 		const pillGroups = [...dialog.querySelectorAll(".people-bulk-row .people-combination-group > div")];
 		const firstGroupStyle = getComputedStyle(pillGroups[0]);
@@ -4673,8 +4682,8 @@ async function runPeopleConfigureLayoutScenario() {
 		await clickAndSettle(required(previewTrigger, "first Preview titles action"));
 		const expectedPosterCount = 10;
 		const readyMoviePosters = await waitForReadyPosterGrid({
-			preview: ".people-title-preview",
-			gridSelector: ".people-title-preview-grid",
+			preview: ".source-edit-preview-modal",
+			gridSelector: ".source-edit-preview-grid",
 			expectedVisibleCount: expectedPosterCount,
 			expectedSelectedTab: "Movies",
 			label: `Live People Movies Preview at ${window.innerWidth}px`,
@@ -4683,22 +4692,22 @@ async function runPeopleConfigureLayoutScenario() {
 		let previewGrid = readyMoviePosters.grid;
 		const previewBackdrop = preview.closest(".nested-modal-backdrop");
 		const creationPortal = document.querySelector(".add-source-portal");
-		const previewTabs = required(preview.querySelector(".people-preview-tabs"), "People Preview media tabs");
+		const previewTabs = required(preview.querySelector('[aria-label="Preview media"]'), "People Preview media tabs");
 		const movieTab = required(buttonContaining(previewTabs, "Movies"), "People Movies Preview tab");
 		const seriesTab = required(buttonContaining(previewTabs, "Series"), "People Series Preview tab");
 		const moviesInitiallyActive = movieTab.getAttribute("aria-selected") === "true" && seriesTab.getAttribute("aria-selected") === "false";
 		const moviePosterCount = readyMoviePosters.visibleImages.length;
 		await clickAndSettle(seriesTab);
 		const readySeriesPosters = await waitForReadyPosterGrid({
-			preview: ".people-title-preview",
-			gridSelector: ".people-title-preview-grid",
+			preview: ".source-edit-preview-modal",
+			gridSelector: ".source-edit-preview-grid",
 			expectedVisibleCount: expectedPosterCount,
 			expectedSelectedTab: "Series",
 			label: `Live People Series Preview at ${window.innerWidth}px`,
 		});
 		preview = readySeriesPosters.preview;
 		previewGrid = readySeriesPosters.grid;
-		const seriesPreviewTabs = required(preview.querySelector(".people-preview-tabs"), "current People Preview media tabs");
+		const seriesPreviewTabs = required(preview.querySelector('[aria-label="Preview media"]'), "current People Preview media tabs");
 		const seriesMovieTab = required(buttonContaining(seriesPreviewTabs, "Movies"), "current People Movies Preview tab");
 		const currentSeriesTab = required(buttonContaining(seriesPreviewTabs, "Series"), "current People Series Preview tab");
 		const mediaSeparation = {
@@ -4715,8 +4724,8 @@ async function runPeopleConfigureLayoutScenario() {
 		};
 		await clickAndSettle(seriesMovieTab);
 		const restoredMoviePosters = await waitForReadyPosterGrid({
-			preview: ".people-title-preview",
-			gridSelector: ".people-title-preview-grid",
+			preview: ".source-edit-preview-modal",
+			gridSelector: ".source-edit-preview-grid",
 			expectedVisibleCount: expectedPosterCount,
 			expectedSelectedTab: "Movies",
 			label: `Restored live People Movies Preview at ${window.innerWidth}px`,
@@ -4724,7 +4733,7 @@ async function runPeopleConfigureLayoutScenario() {
 		preview = restoredMoviePosters.preview;
 		previewGrid = restoredMoviePosters.grid;
 		const previewState = {
-			modalSurface: preview.dataset.previewSurface === "modal" && preview.getAttribute("role") === "dialog" && preview.getAttribute("aria-modal") === "true",
+			modalSurface: preview.getAttribute("role") === "dialog" && preview.getAttribute("aria-modal") === "true",
 			outsidePeopleRow: preview.closest(".people-bulk-row") === null,
 			posterCount: restoredMoviePosters.visibleImages.length,
 			postersReady: restoredMoviePosters.visibleImages.every((image) => image.complete && image.naturalWidth > 0 && image.naturalHeight > 0 && visibleElement(image)),
@@ -4733,7 +4742,7 @@ async function runPeopleConfigureLayoutScenario() {
 			geometry: titlePreviewGeometry(preview, previewGrid),
 			posterOnly: previewGrid.children.length > 0 && [...previewGrid.children].every((child) => child.tagName === "IMG"),
 			noHorizontalOverflow: preview.scrollWidth <= preview.clientWidth && document.documentElement.scrollWidth <= window.innerWidth,
-			headingFocused: document.activeElement === preview.querySelector("strong"),
+			headingFocused: document.activeElement === preview.querySelector("header button"),
 			sharedNestedLayer: previewBackdrop?.dataset.nestedModalBackdrop === "true",
 			aboveCreationModal: Number.parseInt(getComputedStyle(previewBackdrop).zIndex, 10) > Number.parseInt(getComputedStyle(creationPortal).zIndex, 10),
 			mediaSeparation,
@@ -4742,11 +4751,11 @@ async function runPeopleConfigureLayoutScenario() {
 			document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
 			await afterCommittedEffects();
 		});
-		previewState.escapeClosed = document.querySelector(".people-title-preview") === null;
+		previewState.escapeClosed = document.querySelector(".source-edit-preview-modal") === null;
 		previewState.escapeRestoredFocus = document.activeElement === previewTrigger;
 		await clickAndSettle(required(previewTrigger, "reopened Preview titles action"));
 		preview = await waitForMountedCondition(() => {
-			const candidate = document.querySelector(".people-title-preview");
+			const candidate = document.querySelector(".source-edit-preview-modal");
 			if (!candidate) return null;
 			return buttonContaining(candidate, "Close") ? candidate : null;
 		}, { label: `Reopened People Preview at ${window.innerWidth}px`, timeoutMs: 20_000 });
@@ -5666,10 +5675,11 @@ async function runAddSourceLivePreviewParityScenario() {
 				await clickAndSettle(result);
 				const card = await waitForMountedCondition(() => document.querySelector('.people-configuration-card[data-person-id="31"]'), { label: "People Configure", timeoutMs: 30_000 });
 				const sortFieldset = requiredElement(document.querySelector('[data-source-capability="sort"][data-source-capability-context="add"]'), "People Add Sort");
-				const sortRadios = [...sortFieldset.querySelectorAll('input[type="radio"][name="people-add-sort"]')];
+				const sortRadios = [...sortFieldset.querySelectorAll('input[type="checkbox"][name="people-add-sort"]')];
 				const sortLabels = sortRadios.map((radio) => radio.closest("label")?.textContent.trim() ?? "");
 				const defaultPopular = sortRadios.find((radio) => radio.value === "popular")?.checked === true;
 				const recentRadio = requiredElement(sortRadios.find((radio) => radio.value === "recent"), "People Recent Sort");
+				await clickAndSettle(requiredElement(sortRadios.find((input) => input.value === "popular"), "Clear Popular sort"));
 				await clickAndSettle(recentRadio);
 				for (const inputElement of card.querySelectorAll('.people-combination-group input[type="checkbox"]')) {
 					if (!inputElement.checked) await clickAndSettle(inputElement);
@@ -5677,8 +5687,8 @@ async function runAddSourceLivePreviewParityScenario() {
 				const retainedThroughConfiguration = recentRadio.checked;
 				const noHorizontalOverflow = sortFieldset.scrollWidth <= sortFieldset.clientWidth + 1
 					&& sortFieldset.getBoundingClientRect().right <= document.querySelector(".people-source-dialog").getBoundingClientRect().right + 1;
-				const radioSemantics = sortRadios.length === 3
-					&& sortRadios.every((radio) => radio.type === "radio" && radio.name === "people-add-sort")
+				const checkboxSemantics = sortRadios.length === 4
+					&& sortRadios.every((radio) => radio.type === "checkbox" && radio.name === "people-add-sort")
 					&& sortRadios.filter((radio) => radio.checked).length === 1;
 				const trigger = requiredElement(document.querySelector('[data-action="preview-add-people"]:not(:disabled)'), "People Add Preview action");
 				const dialog = requiredElement(document.querySelector(".people-source-dialog"), "People Add dialog");
@@ -5706,7 +5716,7 @@ async function runAddSourceLivePreviewParityScenario() {
 						recentSelected: recentRadio.checked,
 						retainedThroughConfiguration,
 						restoredAfterBack,
-						radioSemantics,
+						checkboxSemantics,
 						noHorizontalOverflow,
 						savedSorts: savedSources.map((source) => source.editable.sortBy),
 						oneAtomicRevision: controller.getState().revision === revisionBeforeAdd + 1,
@@ -7899,6 +7909,7 @@ async function runMountedRegressions() {
 }
 
 window.__runExpandedDecadesScenario = () => runExpandedDecadesScenario({ createController, afterCommittedEffects });
+window.__runNativeSourceVariantsScenario = (view) => runNativeSourceVariantsScenario({ createController, importSources, clickAndSettle, afterCommittedEffects, serializedValue, inputContaining, setInputValue, titlePreviewGeometry, openEdit, withMountedEditor, waitForMountedCondition, MountedWorkspace }, view);
 window.__runSourceSortVariantsScenario = (wordingOnly = false) => runSourceSortVariantsScenario({ createController, importSources, clickAndSettle, afterCommittedEffects, serializedValue, inputContaining, setInputValue, titlePreviewGeometry, openEdit, withMountedEditor }, { wordingOnly });
 window.__builderSourceEditMounted = { status: "running" };
 window.__runGenreToolbarScenario = runGenreToolbarScenario;
@@ -7935,7 +7946,7 @@ window.__runTmdbListLivePreviewScenario = runTmdbListLivePreviewScenario;
 window.__prepareSourceChooserKeyboardScenario = prepareSourceChooserKeyboardScenario;
 window.__inspectSourceChooserKeyboardFocus = inspectSourceChooserKeyboardFocus;
 window.__finishSourceChooserKeyboardScenario = finishSourceChooserKeyboardScenario;
-(["source-details-only", "source-round-trip-only", "source-sort-variants-only"].some((key) => new URLSearchParams(window.location.search).has(key)) ? Promise.resolve({}) : runMountedRegressions()).then(
+(["source-details-only", "source-round-trip-only", "source-sort-variants-only", "native-source-variants-only"].some((key) => new URLSearchParams(window.location.search).has(key)) ? Promise.resolve({}) : runMountedRegressions()).then(
 	(results) => { window.__builderSourceEditMounted = { status: "complete", results }; },
 	(error) => {
 		window.__builderSourceEditMounted = {

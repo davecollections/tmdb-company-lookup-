@@ -1,6 +1,7 @@
+import { inspectNativeHierarchyPlacement, nativeHierarchyCounts, resolveNativeHierarchyPlacements } from "./native-source-variants.js";
 import { isInvisibleNuvioTitle, NUVIO_INVISIBLE_TITLE } from "../nuvio/titles.js";
 import { normalizeHierarchyShowAllTab } from "./hierarchy-presentation.js";
-import { peopleSourceIdentity, validatePeopleSourceDrafts } from "./person-source.js";
+import { peopleSourceVariantKey, peopleSourceIdentity, validatePeopleSourceDrafts } from "./person-source.js";
 import { isPositiveSafePersonId } from "./tmdb-person-input.js";
 
 export const PEOPLE_HIERARCHY_PLAN_TYPE = "people-hierarchy-plan";
@@ -16,6 +17,7 @@ export const PEOPLE_PLACEMENT_STATUSES = Object.freeze({
 });
 
 const OPTION_KEYS = new Set([
+	"folderDestinations",
 	"scope",
 	"projectRevision",
 	"destinationCollectionInternalId",
@@ -43,66 +45,11 @@ function canonicalText(value) {
 	return typeof value === "string" ? value.trim() : "";
 }
 
-function sourceOccurrences(project, identities) {
-	const selected = new Set(identities);
-	const occurrences = [];
-	for (const collection of project?.collections ?? []) {
-		for (const folder of collection.folders ?? []) {
-			for (const source of folder.sources ?? []) {
-				const identity = peopleSourceIdentity(source.editable);
-				if (!selected.has(identity)) continue;
-				occurrences.push(Object.freeze({
-					identity,
-					collectionInternalId: collection.internalId,
-					collectionTitle: canonicalText(collection.editable?.title),
-					folderInternalId: folder.internalId,
-					folderTitle: canonicalText(folder.editable?.title),
-					sourceInternalId: source.internalId,
-					sourceTitle: canonicalText(source.editable?.title),
-				}));
-			}
-		}
-	}
-	return Object.freeze(occurrences);
-}
-
 export function inspectPeopleHierarchyPlacement(project, drafts, { destinationCollectionInternalId = null } = {}) {
-	const identities = drafts.map((draft) => peopleSourceIdentity(draft?.editable));
-	if (identities.some((identity) => identity === null)) return null;
-	const personId = identities[0]?.split("|")[2] ?? null;
-	const occurrences = sourceOccurrences(project, identities);
-	const destinationPersonOccurrences = destinationCollectionInternalId === null ? Object.freeze([]) : Object.freeze((project.collections ?? [])
-		.filter((collection) => collection.internalId === destinationCollectionInternalId)
-		.flatMap((collection) => collection.folders ?? [])
-		.flatMap((folder) => (folder.sources ?? []).map((source) => ({ folder, source })))
-		.filter(({ source }) => peopleSourceIdentity(source.editable)?.split("|")[2] === personId)
-		.map(({ folder, source }) => Object.freeze({
-			identity: peopleSourceIdentity(source.editable),
-			collectionInternalId: destinationCollectionInternalId,
-			folderInternalId: folder.internalId,
-			folderTitle: canonicalText(folder.editable?.title),
-			sourceInternalId: source.internalId,
-			sourceTitle: canonicalText(source.editable?.title),
-		})));
-	const sourceOutcomes = identities.map((identity) => {
-		const matches = occurrences.filter((entry) => entry.identity === identity);
-		const destination = destinationCollectionInternalId === null
-			? []
-			: matches.filter((entry) => entry.collectionInternalId === destinationCollectionInternalId);
-		const elsewhere = destinationCollectionInternalId === null
-			? matches
-			: matches.filter((entry) => entry.collectionInternalId !== destinationCollectionInternalId);
-		return Object.freeze({ identity, destination: Object.freeze(destination), elsewhere: Object.freeze(elsewhere) });
+	const placement = inspectNativeHierarchyPlacement(project, drafts, {
+		destinationCollectionInternalId, structuralIdentity: peopleSourceIdentity, variantKey: peopleSourceVariantKey,
 	});
-	const destinationMatches = sourceOutcomes.filter((entry) => entry.destination.length > 0).length;
-	const status = destinationCollectionInternalId !== null && destinationMatches === identities.length
-		? PEOPLE_PLACEMENT_STATUSES.ALREADY_IN_COLLECTION
-		: destinationCollectionInternalId !== null && (destinationMatches > 0 || destinationPersonOccurrences.length > 0)
-			? PEOPLE_PLACEMENT_STATUSES.PARTLY_IN_COLLECTION
-			: sourceOutcomes.some((entry) => entry.elsewhere.length > 0)
-				? PEOPLE_PLACEMENT_STATUSES.EXISTS_ELSEWHERE
-				: PEOPLE_PLACEMENT_STATUSES.READY;
-	return Object.freeze({ status, sourceOutcomes: Object.freeze(sourceOutcomes), occurrences, destinationPersonOccurrences });
+	return placement ? Object.freeze({ ...placement, destinationPersonOccurrences: placement.destination }) : null;
 }
 
 function normalizePersonEntry(entry, index, errors) {
@@ -132,15 +79,6 @@ function titleCollisions(project, title) {
 	return Object.freeze((project.collections ?? [])
 		.filter((collection) => collection.editable?.title === title)
 		.map((collection) => Object.freeze({ collectionInternalId: collection.internalId, collectionTitle: title })));
-}
-
-function deriveCounts(collections, folders) {
-	const createdFolders = [...collections.flatMap((collection) => collection.folders), ...folders];
-	return Object.freeze({
-		collectionCount: collections.length,
-		folderCount: createdFolders.length,
-		sourceCount: createdFolders.reduce((total, folder) => total + folder.sources.length, 0),
-	});
 }
 
 function applyFolderTitleVisibility(folderEditable, personName, folderTitleVisibility) {
@@ -217,8 +155,10 @@ export function createPeopleHierarchyPlan(project, options) {
 			outcome: placement,
 		});
 	});
-	const blocked = new Set([PEOPLE_PLACEMENT_STATUSES.ALREADY_IN_COLLECTION, PEOPLE_PLACEMENT_STATUSES.PARTLY_IN_COLLECTION]);
-	const readyFolders = scope === "new-folder" ? evaluated.filter((folder) => !blocked.has(folder.outcome.status)) : evaluated;
+	const placement = resolveNativeHierarchyPlacements(evaluated, destinationCollection?.internalId ?? null, options.folderDestinations);
+	if (!placement) return Object.freeze({ ok: false, plan: null, errors: Object.freeze([diagnostic("INVALID_NATIVE_FOLDER_DESTINATION", "$plan.folderDestinations", "Choose a current matching folder for the new sources.")]) });
+	const { placed, existingFolderAdditions } = placement;
+	const readyFolders = placement.folders;
 	const collections = scope === "new-collection" ? Object.freeze([Object.freeze({
 		editable: Object.freeze({
 			title: hideCollectionTitle ? NUVIO_INVISIBLE_TITLE : collectionTitle,
@@ -228,7 +168,7 @@ export function createPeopleHierarchyPlan(project, options) {
 			showAllTab,
 		}),
 		titleCollisions: hideCollectionTitle ? Object.freeze([]) : titleCollisions(project, collectionTitle),
-		folders: Object.freeze(evaluated),
+		folders: Object.freeze(placed),
 	})]) : Object.freeze([]);
 	const folders = scope === "new-folder" ? Object.freeze(readyFolders) : Object.freeze([]);
 	const destination = destinationCollection === null ? null : Object.freeze({
@@ -242,12 +182,13 @@ export function createPeopleHierarchyPlan(project, options) {
 	const plan = Object.freeze({
 		planType: PEOPLE_HIERARCHY_PLAN_TYPE,
 		captured: Object.freeze({ projectInternalId: project.internalId, projectRevision: options.projectRevision }),
-		configuration: Object.freeze({ scope, collectionTitle, hideCollectionTitle, viewMode, showAllTab, pinToTop, folderTitleVisibility, people: Object.freeze(entries) }),
+		configuration: Object.freeze({ folderDestinations: Object.freeze({ ...(options.folderDestinations ?? {}) }), scope, collectionTitle, hideCollectionTitle, viewMode, showAllTab, pinToTop, folderTitleVisibility, people: Object.freeze(entries) }),
 		destination,
 		collections,
 		folders,
-		outcomes: Object.freeze(evaluated.map((folder) => folder.outcome)),
-		counts: deriveCounts(collections, folders),
+		existingFolderAdditions,
+		outcomes: Object.freeze(placed.map((folder) => folder.outcome)),
+		counts: nativeHierarchyCounts(collections, folders, placed, existingFolderAdditions),
 	});
 	return Object.freeze({ ok: true, plan, errors: Object.freeze([]) });
 }
@@ -255,6 +196,7 @@ export function createPeopleHierarchyPlan(project, options) {
 function rebuildOptions(plan) {
 	return {
 		scope: plan.configuration.scope,
+		folderDestinations: plan.configuration.folderDestinations,
 		projectRevision: plan.captured.projectRevision,
 		...(plan.destination ? { destinationCollectionInternalId: plan.destination.collectionInternalId } : {}),
 		...(plan.configuration.scope === "new-collection" ? {
@@ -274,7 +216,7 @@ function comparablePlan(plan) {
 		configuration: plan.configuration,
 		destination: plan.destination,
 		collections: plan.collections,
-		folders: plan.folders,
+		folders: plan.folders, existingFolderAdditions: plan.existingFolderAdditions,
 		outcomes: plan.outcomes,
 		counts: plan.counts,
 	});
@@ -300,13 +242,13 @@ export function applyPeopleHierarchyPlan(controller, plan) {
 	const state = controller.getState();
 	const validation = validatePeopleHierarchyPlan(plan, { project: state.project, projectRevision: state.revision });
 	if (!validation.ok) return Object.freeze({ ok: false, stale: validation.stale, errors: validation.errors, warnings: Object.freeze([]) });
-	if (plan.counts.folderCount === 0) return Object.freeze({ ok: false, errors: Object.freeze([diagnostic("NO_PEOPLE_FOLDERS_READY", "$peoplePlan.folders", "No new People folders are ready to create here.")]), warnings: Object.freeze([]) });
+	if (plan.counts.sourceCount === 0 || plan.counts.unresolvedEntityCount > 0) return Object.freeze({ ok: false, errors: Object.freeze([diagnostic("NO_PEOPLE_SOURCES_READY", "$peoplePlan.folders", "Choose missing sources and resolve their destination folders.")]), warnings: Object.freeze([]) });
 	const bundlesFor = (folders) => folders.map((folder) => ({
 		folder: { editable: folder.editable },
 		sources: folder.sources.map((source) => source.draft),
 	}));
 	const result = plan.configuration.scope === "new-collection"
 		? controller.createCollectionsWithFoldersAndSources({ bundles: plan.collections.map((collection) => ({ collection: { editable: collection.editable }, folders: bundlesFor(collection.folders) })) })
-		: controller.createFoldersWithSources(plan.destination.collectionInternalId, { bundles: bundlesFor(plan.folders) });
+		: controller.extendCollectionWithFoldersAndSources(plan.destination.collectionInternalId, { newFolders: bundlesFor(plan.folders), existingFolderAdditions: plan.existingFolderAdditions.map((addition) => ({ folderInternalId: addition.folderInternalId, sources: addition.sources.map((source) => source.draft) })) });
 	return result.ok ? { ...result, counts: plan.counts } : result;
 }

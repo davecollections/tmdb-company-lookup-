@@ -288,15 +288,15 @@ test("all four Network sorts build the exact canonical NETWORK/TV source and ser
 	assert.equal(JSON.stringify(serialized.value).includes("count"), false);
 });
 
-test("Network duplicate identity ignores title and sort while distinguishing current-folder and elsewhere occurrences", () => {
+test("Network exact duplicate comparison ignores title and includes sort while distinguishing current-folder and elsewhere occurrences", () => {
 	assert.equal(networkSourceIdentity({ provider: "TMDB", tmdbSourceType: "network", tmdbId: "02", mediaType: "tv" }), "tmdb|NETWORK|2|TV");
 	const existing = { title: "Custom", sortBy: "vote_count.desc", tmdbId: 2, filters: {}, provider: "tmdb", mediaType: "TV", tmdbSourceType: "NETWORK" };
 	const { controller, folder } = createSelectedFolderController({ sources: [existing], twoFolders: true });
-	const review = inspectNetworkSourceDuplicates(controller.getState().project, folder.internalId, 2);
+	const review = inspectNetworkSourceDuplicates(controller.getState().project, folder.internalId, [buildNetworkSourceDraft(network(), { sortOptionId: "most-votes" }).draft]);
 	assert.equal(review.destination.length, 1);
 	assert.equal(review.elsewhere.length, 0);
 	const otherFolder = controller.getState().project.collections[0].folders[1];
-	const elsewhere = inspectNetworkSourceDuplicates(controller.getState().project, otherFolder.internalId, 2);
+	const elsewhere = inspectNetworkSourceDuplicates(controller.getState().project, otherFolder.internalId, [buildNetworkSourceDraft(network(), { sortOptionId: "most-votes" }).draft]);
 	assert.equal(elsewhere.destination.length, 0);
 	assert.equal(elsewhere.elsewhere.length, 1);
 });
@@ -304,7 +304,7 @@ test("Network duplicate identity ignores title and sort while distinguishing cur
 test("same-folder Network duplicates require exact Add-anyway approval and recheck immediately before one atomic insertion", () => {
 	const existing = { title: "ABC", sortBy: "vote_count.desc", tmdbId: 2, filters: {}, provider: "tmdb", mediaType: "TV", tmdbSourceType: "NETWORK" };
 	const { controller, folder } = createSelectedFolderController({ sources: [existing] });
-	const draft = buildNetworkSourceDraft(network()).draft;
+	const draft = buildNetworkSourceDraft(network(), { sortOptionId: "most-votes" }).draft;
 	const before = controller.getState().revision;
 	const blocked = createNetworkSource(controller, { folderInternalId: folder.internalId, network: network(), draft });
 	assert.equal(blocked.ok, false);

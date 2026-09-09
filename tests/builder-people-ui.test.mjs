@@ -43,10 +43,31 @@ const {
 	PeopleSearchStep,
 	PeopleSourceFlow,
 	PeopleSourceSortChoices,
-	PeopleTitlePreviewSurface,
 	requestSelectedPersonDetails,
 } = await vite.ssrLoadModule("/src/ui/PeopleSourceFlow.jsx");
+const { SourceTitlePreviewDialog } = await vite.ssrLoadModule("/src/ui/SourceTitlePreviewDialog.jsx");
+const { NativeFolderPlacementNotice, NativeFolderPlacementSummary } = await vite.ssrLoadModule("/src/ui/NativeFolderPlacement.jsx");
 after(() => vite.close());
+
+test("native folder placement is compact, explains duplicates once and requires only ambiguous missing destinations", () => {
+	const matchingFolders = [{ folderInternalId: "a", folderTitle: "Renamed", folderPosition: 1 }, { folderInternalId: "b", folderTitle: "Renamed", folderPosition: 2 }];
+	const outcome = { identities: ["popular", "recent"], existingSourceCount: 1, missingSourceCount: 1, kind: "unresolved", matchingFolders };
+	const render = (value) => renderToStaticMarkup(createElement(NativeFolderPlacementNotice, { name: "Selected entity", outcome: value, onChoose() {} }));
+	const partial = render(outcome);
+	assert.match(partial, /Partly added/);
+	assert.match(partial, /Add new sources to/);
+	assert.match(partial, /aria-invalid="true"/);
+	assert.match(partial, /Renamed · Folder 1/);
+	assert.match(partial, /Renamed · Folder 2/);
+	assert.doesNotMatch(partial, /separate folder|Open existing folder|stay unchanged/);
+	const complete = render({ ...outcome, existingSourceCount: 2, missingSourceCount: 0, kind: "complete" });
+	assert.match(complete, /Already added/);
+	assert.doesNotMatch(complete, /<select/);
+	const summary = renderToStaticMarkup(createElement(NativeFolderPlacementSummary, { counts: { folderCount: 0, existingFolderAdditionCount: 2, sourceCount: 3, existing: 1, unresolvedEntityCount: 0 } }));
+	assert.match(summary, /3 sources to add to 2 existing folders/);
+	assert.match(summary, /<p class="native-folder-duplicate-notice">Some sources already exist and won’t be created\.<\/p>/);
+	assert.doesNotMatch(summary, /requested|skipped|represented/);
+});
 
 function read(relativePath) {
 	return fs.readFileSync(path.join(rootDir, relativePath), "utf8");
@@ -280,40 +301,28 @@ test("People bulk controls expose only Automatic and Same for all while rows rem
 	assert.match(flow, /aria-describedby=\{headingDescription \? descriptionId : undefined\}/);
 });
 
-test("poster-only title preview separates applicable media and exposes bounded ready, loading, empty, and recoverable error states", () => {
-	const selected = person();
-	const items = Array.from({ length: 10 }, (_, index) => ({ identity: `movie|${index + 1}`, posterPath: `/poster-${index + 1}.jpg` }));
-	const ready = renderToStaticMarkup(createElement(PeopleTitlePreviewSurface, { person: selected, state: { status: "ready", mediaType: "MOVIE" }, items, limit: 10, mediaTypes: ["MOVIE", "TV"], totalResults: 14, onChangeMedia() {}, onClose() {}, onRetry() {} }));
-	assert.ok(ready.includes('data-preview-surface="modal"'));
+test("shared People title Preview limits posters, distinguishes title totals and clears stale display states", () => {
+	const items = Array.from({ length: 14 }, (_, index) => ({ id: index + 1, posterPath: "/poster-" + (index + 1) + ".jpg" }));
+	const render = (status, results = items, error = null) => renderToStaticMarkup(createElement(SourceTitlePreviewDialog, {
+		preview: { status, candidate: { request: { kind: "people", mediaType: "MOVIE", label: "Tom Hanks" } }, data: { results, totalResults: 18 }, error },
+		context: "Acting · Most voted Movies", onClose() {}, onRetry() {},
+	}));
+	const ready = render("ready");
 	assert.ok(ready.includes('role="dialog"'));
 	assert.ok(ready.includes('aria-modal="true"'));
-	assert.ok(ready.includes('data-preview-status="ready"'));
-	assert.ok(ready.includes('data-preview-limit="10"'));
 	assert.equal((ready.match(/<img/g) ?? []).length, 10);
-	assert.ok(ready.includes('alt="Movies preview poster 1"'));
-	assert.equal((ready.match(/role="tab"/g) ?? []).length, 2);
-	assert.ok(ready.includes('aria-selected="true">Movies'));
-	assert.ok(ready.includes("Movies · 14"));
-	assert.equal(ready.includes("Movies + Series"), false);
-	assert.equal(ready.includes("Forrest Gump"), false);
-	assert.equal(ready.includes("rating"), false);
-	assert.equal(ready.includes("release"), false);
+	assert.ok(ready.includes("Acting · Most voted Movies · 18 titles"));
 	assert.ok(ready.includes(">Close<"));
-	const mobile = renderToStaticMarkup(createElement(PeopleTitlePreviewSurface, { person: selected, state: { status: "ready" }, items: items.slice(0, 5), limit: 5, onClose() {}, onRetry() {} }));
-	assert.equal((mobile.match(/<img/g) ?? []).length, 5);
-	assert.ok(mobile.includes('data-preview-limit="5"'));
-	const loading = renderToStaticMarkup(createElement(PeopleTitlePreviewSurface, { person: selected, state: { status: "loading", mediaType: "TV" }, items: [], limit: 5, mediaTypes: ["TV"], onClose() {}, onRetry() {} }));
-	assert.ok(loading.includes('role="status"'));
-	assert.ok(loading.includes("Preparing series poster preview"));
-	const filtered = renderToStaticMarkup(createElement(PeopleTitlePreviewSurface, { person: selected, state: { status: "ready" }, items: [{ identity: "missing", posterPath: null }, { identity: "invalid", posterPath: "poster.jpg" }, items[0]], limit: 5, onClose() {}, onRetry() {} }));
-	assert.equal((filtered.match(/<img/g) ?? []).length, 1);
-	assert.equal(filtered.includes("No poster"), false);
-	const empty = renderToStaticMarkup(createElement(PeopleTitlePreviewSurface, { person: selected, state: { status: "ready" }, items: [], limit: 5, onClose() {}, onRetry() {} }));
-	assert.ok(empty.includes("No posters available."));
-	const error = renderToStaticMarkup(createElement(PeopleTitlePreviewSurface, { person: selected, state: { status: "error", error: { message: "Preview unavailable." } }, items: [], limit: 5, onClose() {}, onRetry() {} }));
-	assert.ok(error.includes('role="alert"'));
-	assert.ok(error.includes("Preview unavailable."));
-	assert.ok(error.includes(">Retry<"));
+	const loading = render("loading", []);
+	assert.ok(loading.includes("Preparing preview"));
+	assert.equal(loading.includes("18 titles"), false);
+	assert.equal(loading.includes("<img"), false);
+	assert.equal((render("ready", [{ id: 1, posterPath: null }, { id: 2, posterPath: "invalid" }, items[0]]).match(/<img/g) ?? []).length, 1);
+	assert.ok(render("ready", []).includes("No posters available."));
+	const failed = render("error", [], { message: "Preview unavailable." });
+	assert.ok(failed.includes('role="alert"'));
+	assert.ok(failed.includes("Preview unavailable."));
+	assert.ok(failed.includes(">Retry<"));
 });
 
 test("selection loading and failure are distinct announced states", () => {
@@ -702,29 +711,19 @@ test("shared People flow keeps modal lifecycle contracts for both contexts", () 
 	}
 });
 
-test("People Add and guided flows share the exact accessible People sort control", () => {
-	const changed = [];
-	const addChoice = PeopleSourceSortChoices({ context: "add", selectedId: "popular", onChange: (value) => changed.push(value) });
-	const addFieldset = addChoice.type(addChoice.props);
-	const radios = findElements(addFieldset, (node) => node.type === "input" && node.props?.type === "radio");
-	const addMarkup = renderToStaticMarkup(createElement(PeopleSourceSortChoices, { context: "add", selectedId: "popular", onChange() {} }));
-	const guidedMarkup = renderToStaticMarkup(createElement(PeopleSourceSortChoices, { context: "guided", selectedId: "recent", onChange() {} }));
-
-	assert.deepEqual(radios.map((radio) => radio.props.value), ["popular", "recent", "top-rated"]);
-	assert.equal(radios.every((radio) => radio.props.name === "people-add-sort"), true);
-	assert.deepEqual(radios.map((radio) => radio.props.checked), [true, false, false]);
-	radios[2].props.onChange();
-	assert.deepEqual(changed, ["top-rated"]);
-	assert.match(addMarkup, /data-source-capability="sort"/);
-	assert.match(addMarkup, /data-source-capability-context="add"/);
-	assert.match(addMarkup, /<legend>Sort titles by<\/legend>/);
-	assert.equal((addMarkup.match(/type="radio"/g) ?? []).length, 3);
-	assert.ok(addMarkup.indexOf("Popular") < addMarkup.indexOf("Recent"));
-	assert.ok(addMarkup.indexOf("Recent") < addMarkup.indexOf("Top rated"));
-	assert.equal(addMarkup.includes("Most votes"), false);
-	assert.match(guidedMarkup, /data-source-capability-context="guided"/);
-	assert.match(guidedMarkup, /name="people-hierarchy-sort"/);
-	assert.match(guidedMarkup, /data-selected="true"><input[^>]*checked=""[^>]*value="recent"/);
+test("People Add and guided flows share four accessible creation checkboxes and explicit empty validation", () => {
+	for (const context of ["add", "guided"]) {
+		const markup = renderToStaticMarkup(createElement(PeopleSourceSortChoices, { context, selectedIds: ["popular", "most-votes"], onChange() {} }));
+		assert.match(markup, /<legend>Sources to create<\/legend>/);
+		assert.equal((markup.match(/type="checkbox"/g) ?? []).length, 4);
+		assert.equal((markup.match(/checked=""/g) ?? []).length, 2);
+		assert.equal((markup.match(/type="radio"/g) ?? []).length, 0);
+		assert.ok(markup.includes("Selected: Popular, Most voted"));
+		assert.ok(markup.includes('data-source-capability-context="' + context + '"'));
+		const empty = renderToStaticMarkup(createElement(PeopleSourceSortChoices, { context, selectedIds: [], onChange() {} }));
+		assert.ok(empty.includes("Choose at least one option."));
+		assert.ok(empty.includes('aria-invalid="true"'));
+	}
 });
 
 test("guided People owns browse-first heading focus while Add Source keeps Search focus", () => {
@@ -759,17 +758,13 @@ test("shared People flow keeps Add Source behavior and adds a bounded hierarchy 
 	assert.equal(flow.includes("people-mode-transition"), false);
 	assert.match(flow, /<PeopleSourceSortChoices context=\{hierarchy \? "guided" : "add"\}/);
 	assert.match(flow, /hierarchy \|\| context === "folder"/);
-	assert.match(flow, /buildPeopleSourceDrafts\(person, \{ combinations: configuration\.combinations, sortOptionId \}\)/);
-	assert.match(flow, /buildPeopleTitlePreview\(detailResult\.person/);
-	assert.match(flow, /peoplePreviewMediaTypes/);
-	assert.match(flow, /changePeoplePreviewMedia/);
-	assert.match(flow, /mediaType: previewState\.mediaType/);
-	assert.match(flow, /\(!retry && entry\.detail\?\.status !== "ready"\)/);
-	assert.match(flow, /onRetryPreview=\{\(entry\) => openTitlePreview\(entry, null, \{ retry: true \}\)\}/);
-	assert.match(flow, /previewRestoreFocusRef/);
-	assert.match(flow, /window\.requestAnimationFrame\(\(\) => focusElementWithoutScroll\(trigger\)\)/);
-	assert.match(flow, /handleDialogKeyDown\(event, dialogRef\.current, onClose\)/);
-	assert.match(flow, /event\.stopPropagation\(\)/);
+	assert.match(flow, /buildPeopleSourceDrafts\(person, \{ combinations: configuration\.combinations, sortOptionIds \}\)/);
+	assert.match(flow, /useSourceTitlePreview\("people"/);
+	assert.match(flow, /titlePreview\.open\(entry\.drafts\.drafts, \{ trigger, person: entry\.person/);
+	assert.match(flow, /<SourceTitlePreviewDialog[^\n]*\{\.\.\.titlePreview\.dialogProps\}/);
+	const previewHook = read("builder/src/ui/use-source-title-preview.js");
+	assert.match(previewHook, /onRetry: \(\) => preview && load\(preview\.candidate\)/);
+	assert.match(previewHook, /window\.requestAnimationFrame\(\(\) => focusElementWithoutScroll\(trigger\)\)/);
 	assert.match(flow, /alwaysDisclose/);
 	assert.match(flow, /showDisclosureCount=\{false\}/);
 	assert.equal(flow.includes("people-configuration-person"), false);
@@ -790,7 +785,8 @@ test("shared People flow keeps Add Source behavior and adds a bounded hierarchy 
 	assert.match(styles, /\.people-combination-group\.is-pills \.people-source-pill:has\(input:checked\)\s*\{[\s\S]*box-shadow:\s*inset 0 0 0 1px/);
 	assert.doesNotMatch(styles, /people-source-pill-check/);
 	assert.match(styles, /\.people-source-pill\[data-people-role="directing"\]/);
-	assert.match(flow, /people-title-preview-backdrop nested-modal-backdrop/);
+	assert.match(read("builder/src/ui/SourceTitlePreviewDialog.jsx"), /<NestedPreviewDialog/);
+	assert.match(read("builder/src/ui/NestedPreviewDialog.jsx"), /nested-modal-backdrop/);
 	assert.match(styles, /\.nested-modal-backdrop\s*\{[\s\S]*z-index:\s*var\(--layer-nested-modal\)/);
 	assert.match(styles, /\.people-title-preview-backdrop\s*\{[\s\S]*place-items:\s*center/);
 	assert.match(styles, /\.people-title-preview\s*\{[\s\S]*max-height:/);

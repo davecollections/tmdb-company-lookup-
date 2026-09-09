@@ -1,3 +1,12 @@
+export function SourceCreationSortChoices({ options, selectedIds, name, helper = "Choose one or more options. Movies and Series get separate sources.", ...props }) {
+	const errorId = `${name}-error`;
+	const labels = options.filter((option) => selectedIds.includes(option.id)).map((option) => option.label);
+	return <>
+		<SemanticSortChoices {...props} options={options} selectedIds={selectedIds} name={name} legend="Sources to create" helper={helper} validationMessageId={errorId} />
+		{selectedIds.length === 0 ? <p id={errorId} className="editor-field-help" role="alert">Choose at least one option.</p> : <p className="editor-field-help">Selected: {labels.join(", ")}</p>}
+	</>;
+}
+
 export function SemanticSortChoices({
 	options,
 	selectedId,

@@ -16,6 +16,9 @@ const networkFlow = read("builder/src/ui/NetworkSourceFlow.jsx");
 const catalogue = read("builder/src/source-add/network-catalogue.js");
 const searchHook = read("builder/src/ui/use-network-catalogue-search.js");
 const previewProvider = read("builder/src/source-add/tmdb-network-preview-provider.js");
+const sharedPreview = read("builder/src/ui/SourceTitlePreviewDialog.jsx");
+const previewHook = read("builder/src/ui/use-source-title-preview.js");
+const previewVariants = read("builder/src/source-add/source-title-preview.js");
 const nestedDialog = read("builder/src/ui/NestedPreviewDialog.jsx");
 const posterGrid = read("builder/src/ui/PosterOnlyPreviewGrid.jsx");
 const creationOptions = read("builder/src/ui/creation-options.js");
@@ -147,7 +150,7 @@ test("Add and hierarchy Search expose the same Series Count and result-order con
 	}
 });
 
-test("Network hierarchy follows Select to Configure to Appearance with one shared Series sort", () => {
+test("Network hierarchy follows Select to Configure to Appearance with shared Series source options", () => {
 	assert.match(flow, /useState\("select"\)/);
 	assert.match(flow, /setStep\("configure"\)/);
 	assert.match(flow, /setStep\("appearance"\)/);
@@ -158,7 +161,7 @@ test("Network hierarchy follows Select to Configure to Appearance with one share
 	assert.match(flow, />Configure Networks</);
 	assert.match(flow, />Appearance</);
 	assert.match(flow, /Continue to Appearance/);
-	assert.match(flow, /Choose one shared Series sort and preview when useful\./);
+	assert.match(flow, /Choose shared Series source options and preview when useful\./);
 	assert.equal((flow.match(/<NetworkSortChoices/g) ?? []).length, 1);
 	assert.doesNotMatch(flow, />Movies?</);
 	assert.doesNotMatch(flow, />Media</);
@@ -171,37 +174,24 @@ test("Network hierarchy follows Select to Configure to Appearance with one share
 	assert.match(flow, /Collection settings stay unchanged\./);
 });
 
-test("poster Preview is explicit, Configure-only, tab-free, and has the exact empty state", () => {
+test("Network Preview is explicit in Configure, Series-only and exposes exact Show candidates", () => {
 	const configure = flow.slice(flow.indexOf("function NetworkConfigureRow"), flow.indexOf("function ArtworkChoices"));
-	const preview = flow.slice(flow.indexOf("function NetworkTitlePreview"), flow.indexOf("function placementLabel"));
 	assert.match(configure, /aria-haspopup="dialog"/);
 	assert.match(configure, />Preview<\/button>/);
-	assert.match(preview, /<PosterOnlyPreviewGrid/);
-	assert.match(preview, /limit=\{10\}/);
-	assert.match(preview, /ariaLabel="Series poster preview"/);
-	assert.match(preview, /emptyMessage="No posters available\."/);
-	assert.match(preview, /<p className="panel-kicker">Title preview<\/p>/);
-	assert.doesNotMatch(preview, /tablist|role="tab"|Movies|mediaMode|mediaTypes/);
-	assert.equal((flow.match(/previewProvider\.getNetworkPreview/g) ?? []).length, 1);
-	assert.doesNotMatch(flow, /prefetch|autoplay|Promise\.all\([^)]*getNetworkPreview/i);
-	assert.match(previewProvider, /with_networks/);
-	assert.match(previewProvider, /requester\.getPreview\(networkId, "TV", concreteSort/);
+	assert.match(flow, /titlePreview.open\(entry.result.drafts/);
+	assert.match(sharedPreview, /<PosterOnlyPreviewGrid[^\n]*limit=\{10\}/);
+	assert.match(sharedPreview, /No posters available\./);
+	assert.match(previewVariants, /label: "Show"/);
+	assert.doesNotMatch(flow, /previewProvider.getNetworkPreview|prefetch/);
+	assert.match(previewProvider, /requester.getPreview\(networkId, "TV", concreteSort/);
 });
 
-test("Configure shows one Series Count line and a successful Preview supersedes its catalogue value transiently", () => {
+test("Configure retains Series knowledge while Preview totals belong to the exact active response", () => {
 	const countLabel = flow.slice(flow.indexOf("function configureCountLabel"), flow.indexOf("function SelectedNetworks"));
-	const configureRow = flow.slice(flow.indexOf("function NetworkConfigureRow"), flow.indexOf("function ConfigureStep"));
-	const requestPreview = flow.slice(flow.indexOf("async function requestPreview"), flow.indexOf("function closePreview"));
-	const planning = flow.slice(flow.indexOf("const planResult"), flow.indexOf("const configureOutcomes"));
-
 	assert.match(countLabel, /exactCount === undefined \? network\?\.seriesCount : exactCount/);
-	assert.equal((configureRow.match(/configureCountLabel\(network, exactCount\)/g) ?? []).length, 1);
-	assert.doesNotMatch(configureRow, /catalogueCountLabel|Exact Series Count|Live Series Count|network-configure-exact-count/);
-	assert.doesNotMatch(flow, /Exact Series Count|Live Series Count/);
-	assert.match(requestPreview, /if \(outcome\.result\?\.ok\)[\s\S]*setExactCounts/);
-	assert.doesNotMatch(requestPreview.slice(requestPreview.indexOf("else if")), /setExactCounts/);
-	assert.doesNotMatch(planning, /exactCounts|totalResults/);
-	assert.equal((flow.match(/previewProvider\.getNetworkPreview/g) ?? []).length, 1);
+	assert.match(flow, /preview\?\.status === "ready".*setExactCounts/);
+	assert.match(sharedPreview, /preview.status === "ready" && Number.isSafeInteger\(preview.data\?\.totalResults\)/);
+	assert.doesNotMatch(flow.slice(flow.indexOf("const planResult"), flow.indexOf("const configureEntries")), /exactCounts|totalResults/);
 });
 
 test("server rendering starts no catalogue, Preview, artwork, or apply request", () => {
@@ -224,7 +214,7 @@ test("server rendering starts no catalogue, Preview, artwork, or apply request",
 });
 
 test("Select uses accessible full-card checkboxes, stable focus, and one scroll owner", () => {
-	const selectable = flow.slice(flow.indexOf("function SelectableNetworkResult"), flow.indexOf("function NetworkTitlePreview"));
+	const selectable = flow.slice(flow.indexOf("function SelectableNetworkResult"), flow.indexOf("function NetworkConfigureRow"));
 	assert.match(selectable, /<label[^>]+network-result-selectable/);
 	assert.match(selectable, /className="visually-hidden choice-card-input" type="checkbox"/);
 	assert.doesNotMatch(selectable, /selectable-card-indicator|✓/);
@@ -233,7 +223,7 @@ test("Select uses accessible full-card checkboxes, stable focus, and one scroll 
 	assert.equal((flow.match(/className="add-source-scroll"/g) ?? []).length, 1);
 	assert.match(flow, /<footer className="add-source-actions">/);
 	assert.match(flow, /focusElementWithoutScroll\(step === "select"/);
-	assert.match(flow, /queueMicrotask\(\(\) => focusElementWithoutScroll\(trigger\)\)/);
+	assert.match(previewHook, /requestAnimationFrame\(\(\) => focusElementWithoutScroll\(trigger\)\)/);
 	assert.match(flow, /inert=\{preview \|\| undefined\}/);
 	assert.match(nestedDialog, /createPortal\(content, document\.body\)/);
 	assert.match(nestedDialog, /initialFocusRef/);
@@ -249,11 +239,11 @@ test("required responsive owner widths use the same 10-poster maximum", () => {
 	assert.match(styles, /@media \(min-width: 900px\), \(min-width: 621px\) and \(min-height: 601px\)[\s\S]*\.add-source-dialog/);
 	assert.match(styles, /\.add-source-scroll\s*\{[^}]*overflow-y:\s*auto/);
 	assert.match(styles, /\.add-source-actions\s*\{[^}]*safe-area-inset-bottom/);
-	assert.match(flow, /className="[^\"]*studio-preview-grid network-preview-grid"/);
+	assert.match(sharedPreview, /studio-preview-grid source-edit-preview-grid/);
 	assert.doesNotMatch(styles, /\.studio-preview-grid img:nth-child\(n \+ 6\)/);
 	assert.match(styles, /@media \(max-width: 620px\)[\s\S]*\.franchise-preview-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(3/);
 	assert.match(posterGrid, /slice\(0, limit\)/);
-	assert.match(flow, /<PosterOnlyPreviewGrid items=\{items\} limit=\{10\}/);
+	assert.match(sharedPreview, /<PosterOnlyPreviewGrid[^\n]*limit=\{10\}/);
 });
 
 test("workspace owns the Network providers and applies one atomic hierarchy plan", () => {

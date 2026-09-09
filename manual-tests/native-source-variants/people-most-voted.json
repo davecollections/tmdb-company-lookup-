@@ -1,0 +1,96 @@
+[
+  {
+    "id": "native-variants-review",
+    "title": "Native variants review",
+    "folders": [
+      {
+        "id": "tom-hanks-review",
+        "title": "Tom Hanks",
+        "sources": [
+          {
+            "title": "Movie Credits - Popular",
+            "sortBy": "popularity.desc",
+            "tmdbId": 31,
+            "filters": {},
+            "provider": "tmdb",
+            "mediaType": "MOVIE",
+            "tmdbSourceType": "PERSON"
+          },
+          {
+            "title": "Movie Credits - Most voted",
+            "sortBy": "vote_count.desc",
+            "tmdbId": 31,
+            "filters": {},
+            "provider": "tmdb",
+            "mediaType": "MOVIE",
+            "tmdbSourceType": "PERSON"
+          },
+          {
+            "title": "Series Credits - Popular",
+            "sortBy": "popularity.desc",
+            "tmdbId": 31,
+            "filters": {},
+            "provider": "tmdb",
+            "mediaType": "TV",
+            "tmdbSourceType": "PERSON"
+          },
+          {
+            "title": "Series Credits - Most voted",
+            "sortBy": "vote_count.desc",
+            "tmdbId": 31,
+            "filters": {},
+            "provider": "tmdb",
+            "mediaType": "TV",
+            "tmdbSourceType": "PERSON"
+          },
+          {
+            "title": "Directed Movies - Popular",
+            "sortBy": "popularity.desc",
+            "tmdbId": 31,
+            "filters": {},
+            "provider": "tmdb",
+            "mediaType": "MOVIE",
+            "tmdbSourceType": "DIRECTOR"
+          },
+          {
+            "title": "Directed Movies - Most voted",
+            "sortBy": "vote_count.desc",
+            "tmdbId": 31,
+            "filters": {},
+            "provider": "tmdb",
+            "mediaType": "MOVIE",
+            "tmdbSourceType": "DIRECTOR"
+          },
+          {
+            "title": "Directed Series - Popular",
+            "sortBy": "popularity.desc",
+            "tmdbId": 31,
+            "filters": {},
+            "provider": "tmdb",
+            "mediaType": "TV",
+            "tmdbSourceType": "DIRECTOR"
+          },
+          {
+            "title": "Directed Series - Most voted",
+            "sortBy": "vote_count.desc",
+            "tmdbId": 31,
+            "filters": {},
+            "provider": "tmdb",
+            "mediaType": "TV",
+            "tmdbSourceType": "DIRECTOR"
+          }
+        ],
+        "hideTitle": false,
+        "tileShape": "POSTER",
+        "coverEmoji": "🎬",
+        "focusGifUrl": "",
+        "heroVideoUrl": "",
+        "titleLogoUrl": "",
+        "coverImageUrl": "",
+        "catalogSources": [],
+        "focusGifEnabled": false,
+        "heroBackdropUrl": ""
+      }
+    ]
+  }
+]

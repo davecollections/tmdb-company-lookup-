@@ -388,7 +388,7 @@ test("People editor opens immediately with four non-blocking counts, title reset
 	]) assert.ok(markup.includes(text), text);
 	assert.equal(markup.includes("physical source"), false);
 	assert.equal((markup.match(/name="source-edit-people-combination"/g) ?? []).length, 4);
-	assert.equal((markup.match(/name="people-edit-sort"/g) ?? []).length, 3);
+	assert.equal((markup.match(/name="people-edit-sort"/g) ?? []).length, 4);
 	assert.equal((markup.match(/class="visually-hidden choice-card-input"/g) ?? []).length, 4);
 	assert.doesNotMatch(markup, /selection-indicator|selection-state|✓/);
 	assert.equal((markup.match(/Checking titles…/g) ?? []).length, 4);
@@ -774,8 +774,8 @@ test("People sort UI preserves an unusual imported value until the user changes 
 		onSortChange() {},
 	}));
 	assert.ok(markup.includes("Current imported sort is preserved until you choose a supported sort: Owner.MixedCase"));
-	assert.equal((markup.match(/name="people-edit-sort"/g) ?? []).length, 3);
-	for (const value of ["popular", "recent", "top-rated"]) assert.ok(markup.includes(`value="${value}"`), value);
+	assert.equal((markup.match(/name="people-edit-sort"/g) ?? []).length, 4);
+	for (const value of ["popular", "recent", "top-rated", "most-votes"]) assert.ok(markup.includes(`value="${value}"`), value);
 	assert.equal(markup.includes('name="people-edit-sort" value="popular" checked=""'), false);
 	assert.equal(markup.includes("<select"), false);
 });
